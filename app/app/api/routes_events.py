@@ -14,7 +14,7 @@ def list_events(
     hours: int = Query(24, ge=1, le=720),
     category: str | None = None,
     min_severity: float = 0.0,
-    limit: int = Query(2000, le=10000),
+    limit: int = Query(2000, ge=1, le=10000),
 ):
     """返回 GeoJSON FeatureCollection,前端可直接作为 MapLibre source"""
     # 注意: 不能写 (:cat IS NULL OR ...) —— psycopg 无法推断 NULL 参数类型

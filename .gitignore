@@ -37,6 +37,8 @@ Thumbs.db
 
 # Downloaded WinSW wrapper binary; retain its XML configuration in source control
 service/*.exe
+tools/*.exe
+tools/cloudflared.exe
 
 # Playwright CLI local dumps
 web/.playwright-cli/

@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>全球综合危机监测中心</title>
+    <!-- 语言由 main.js applyUiLang 同步 title -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+    <script type="module" crossorigin src="/assets/index-DyCgv11X.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DKRjHKOe.css">
+  </head>
+  <body>
+    <!-- map-stage：平面↔地球仪卷曲过渡的动画容器 -->
+    <div id="map-stage" class="map-stage">
+      <div id="map"></div>
+      <div id="map-veil" class="map-veil" aria-hidden="true"></div>
+    </div>
+
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"></div>
+        <div>
+          <h1 data-i18n="title">全球综合危机监测中心</h1>
+          <p data-i18n="brandSub">公开数据 · 本地部署</p>
+        </div>
+      </div>
+      <div class="live-pill" id="livePill"><span class="pulse"></span><span data-i18n="live">实时运行</span></div>
+      <div class="seg" role="tablist" aria-label="视图切换">
+        <button type="button" class="active" data-view="global" id="btnGlobal" data-i18n="global">全球总览</button>
+        <button type="button" data-view="local" id="btnLocal" data-i18n="local">本地专题</button>
+      </div>
+      <div class="seg compact" role="tablist" aria-label="地图形态">
+        <button
+          type="button"
+          class="active"
+          data-mapmode="flat"
+          id="btnFlat"
+          data-i18n="flat"
+          data-i18n-title="flatTitle"
+          title="平面墨卡托地图"
+        >
+          平面图
+        </button>
+        <button
+          type="button"
+          data-mapmode="globe"
+          id="btnGlobe"
+          data-i18n="globe"
+          data-i18n-title="globeTitle"
+          title="悬浮立体地球仪"
+        >
+          地球仪
+        </button>
+      </div>
+      <div class="seg compact" role="tablist" aria-label="地表材质">
+        <button
+          type="button"
+          class="active"
+          data-surface="sat"
+          id="btnSat"
+          data-i18n="sat"
+          data-i18n-title="satTitle"
+          title="卫星影像地表"
+        >
+          卫星
+        </button>
+        <button
+          type="button"
+          data-surface="topo"
+          id="btnTopo"
+          data-i18n="topo"
+          data-i18n-title="topoTitle"
+          title="地形地貌地表"
+        >
+          地形
+        </button>
+      </div>
+      <div class="seg compact lang-seg" role="tablist" aria-label="Language">
+        <button type="button" class="active" data-lang="zh" id="btnLangZh" title="中文界面与中文地名">中文</button>
+        <button type="button" data-lang="en" id="btnLangEn" title="English UI & place names">EN</button>
+      </div>
+      <button
+        type="button"
+        class="panel-toggle"
+        id="btnPanels"
+        aria-pressed="false"
+        title="收起浮动信息面板"
+        aria-label="收起浮动信息面板"
+      >
+        <span class="panel-toggle-icon" aria-hidden="true">▤</span>
+        <span class="panel-toggle-label">收起面板</span>
+      </button>
+      <div class="clock" id="clock">--</div>
+    </header>
+
+    <div class="shell stats">
+      <div class="panel">
+        <div class="stats-grid" id="stats">
+          <div class="stat"><b id="st-total">—</b><span data-i18n="stTotal">事件总数</span></div>
+          <div class="stat nat"><b id="st-nat">—</b><span data-i18n="stNat">自然灾害</span></div>
+          <div class="stat con"><b id="st-con">—</b><span data-i18n="stCon">战争/冲突</span></div>
+          <div class="stat hi"><b id="st-hi">—</b><span data-i18n="stHi">高严重度</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="shell left-top">
+      <div class="panel">
+        <div class="panel-hd"><h3 data-i18n="filter">图层筛选</h3></div>
+        <div class="panel-bd">
+          <div class="field">
+            <label class="ttl" data-i18n="cat">事件类别</label>
+            <div class="checks">
+              <label class="chk">
+                <input type="checkbox" id="f-natural" checked />
+                <span class="box"></span>
+                <span class="lab" data-i18n="labNat">自然灾害</span>
+                <span class="sub" id="cnt-nat">0</span>
+              </label>
+              <label class="chk conflict">
+                <input type="checkbox" id="f-conflict" checked />
+                <span class="box"></span>
+                <span class="lab" data-i18n="labCon">战争/冲突</span>
+                <span class="sub" id="cnt-con">0</span>
+              </label>
+            </div>
+          </div>
+          <div class="field">
+            <label class="ttl" for="hours" data-i18n="hours">时间窗口</label>
+            <select class="select" id="hours">
+              <option value="24" data-i18n="h24">近 24 小时</option>
+              <option value="72" data-i18n="h72">近 3 天</option>
+              <option value="168" selected data-i18n="h168">近 7 天</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="field-hd-row">
+              <label class="ttl" data-i18n="typeFilter">类型图层</label>
+              <div class="type-filter-actions">
+                <button type="button" class="linkish" id="btnTypesAll" data-i18n="typesAll">全选</button>
+                <button type="button" class="linkish" id="btnTypesNone" data-i18n="typesNone">全不选</button>
+                <button type="button" class="linkish" id="btnTypesInvert" data-i18n="typesInvert">反选</button>
+              </div>
+            </div>
+            <div class="legend legend-filters" id="typeLegend" role="group" aria-label="类型图层筛选"></div>
+            <div class="eq-grade-hint" id="eqGradeHint">
+              <span class="legend-dot" style="background:#c9a227"></span><span data-i18n="eqLt5">地震&lt;5</span>
+              <span class="legend-dot" style="background:#f0b429"></span><span data-i18n="eqGe5">≥5</span>
+              <span class="legend-dot" style="background:#e11d48"></span><span data-i18n="eqGe7">≥7</span>
+            </div>
+            <div class="legend-live">
+              <span class="blink-demo" aria-hidden="true"></span>
+              <span data-i18n="blink">近 1 小时内事件闪烁 1 分钟（保持类型色）后恢复静态</span>
+            </div>
+          </div>
+          <div class="hint" id="viewHint">
+            当前为全球总览。切换「本地专题」将聚焦中国区域并优先展示本地相关事件。
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="shell left-bot">
+      <div class="panel">
+        <div class="panel-hd">
+          <h3 data-i18n="health">数据源健康</h3>
+          <span style="font-size: 11px; color: var(--dim)" id="healthTick">同步中</span>
+        </div>
+        <div class="panel-bd" id="hbody">
+          <div class="empty" data-i18n="loadingSource">正在连接数据源…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="shell right">
+      <div class="panel">
+        <div class="panel-hd">
+          <h3 data-i18n="feed">事件流</h3>
+          <span style="font-size: 11px; color: var(--dim)" id="feedCount">0</span>
+        </div>
+        <div class="panel-bd" id="fbody">
+          <div class="empty" data-i18n="loadingEvents">正在加载事件…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tour-hint" id="tourHint">
+      <span data-i18n="tourHint"
+        ><kbd>空格</kbd> 按时间巡览 · 点击地图/列表锁定国家区域 ·
+        <kbd>Esc</kbd> 退出并恢复全局时间序</span
+      >
+      <span class="tour-progress" id="tourProgress"></span>
+    </div>
+    <div class="disclaimer" data-i18n="disclaimer">
+      本系统为公开信息聚合演示，不可替代官方应急预警 · 冲突数据存在媒体偏差与延迟
+    </div>
+    <div id="toasts"></div>
+  </body>
+</html>

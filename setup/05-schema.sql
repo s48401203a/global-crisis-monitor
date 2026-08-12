@@ -8,7 +8,7 @@ CREATE TABLE event (
     -- 两级分类:大类用于告警阈值分组,细类用于前端图层
     category        TEXT NOT NULL,   -- natural | conflict
     type            TEXT NOT NULL,   -- earthquake|cyclone|flood|wildfire|
-                                     -- volcano|drought|armed_clash|crisis_signal
+                                     -- volcano|drought|armed_clash|crisis_signal|war
 
     -- 严重度:0.0-1.0 归一化,仅用于地图热力与排序
     -- 告警阈值按 category 分别配置,不跨类共用(见 8.6)

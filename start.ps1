@@ -183,8 +183,12 @@ if (-not (Test-Path $distIndex)) {
   $srcFiles = @()
   $srcDir = Join-Path $webDir 'src'
   if (Test-Path $srcDir) { $srcFiles += Get-ChildItem -Path $srcDir -Recurse -File }
+  $pubDir = Join-Path $webDir 'public'
+  if (Test-Path $pubDir) { $srcFiles += Get-ChildItem -Path $pubDir -Recurse -File }
   $idxHtml = Join-Path $webDir 'index.html'
   if (Test-Path $idxHtml) { $srcFiles += Get-Item $idxHtml }
+  $viteCfg = Join-Path $webDir 'vite.config.js'
+  if (Test-Path $viteCfg) { $srcFiles += Get-Item $viteCfg }
   if ($srcFiles) {
     $srcNewest = ($srcFiles | Sort-Object LastWriteTime -Descending | Select-Object -First 1).LastWriteTime
     if ($srcNewest -gt (Get-Item $distIndex).LastWriteTime) {
@@ -198,8 +202,12 @@ if ($needBuild) {
   $vp = Get-Command vp -ErrorAction SilentlyContinue
   if ($vp) {
     Push-Location $webDir
-    try { & vp build 2>&1 | ForEach-Object { Log "build: $_" } } finally { Pop-Location }
-    Log 'vp build 完成'
+    $buildOk = $false
+    try {
+      & vp build 2>&1 | ForEach-Object { Log "build: $_" }
+      $buildOk = ($LASTEXITCODE -eq 0)
+    } finally { Pop-Location }
+    if ($buildOk) { Log 'vp build 完成' } else { Log 'vp build 失败（exit!=0）' }
   } else {
     Log '未找到 vp，跳过自动 build（请手动 vp build）'
   }

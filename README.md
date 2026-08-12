@@ -21,6 +21,8 @@ Windows 本机部署的全球自然灾害 + 战争/冲突监测演示：公开�
 Copy-Item app\.env.example app\.env
 ```
 
+完整换机部署步骤见 [DEPLOY.md](./DEPLOY.md)。终审报告见 [docs/终审报告-grok-4.5.html](./docs/终审报告-grok-4.5.html)。
+
 ## 目录
 
 | 路径 | 说明 |

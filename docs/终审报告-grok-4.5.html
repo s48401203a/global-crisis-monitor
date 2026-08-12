@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>全球综合危机监测系统 · 终审报告 · grok-4.5</title>
+  <style>
+    :root { --bg:#0b1220; --card:#121b2c; --line:#243047; --text:#e8eef6; --muted:#9aa8b8; --ok:#3dd68c; --p0:#ff5c7a; --p1:#f0b429; --p2:#7aa2ff; --cyan:#4ec9d4; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: "Segoe UI", "Noto Sans SC", sans-serif; background:var(--bg); color:var(--text); line-height:1.55; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 32px 20px 80px; }
+    h1 { font-size: 28px; margin: 0 0 8px; }
+    h2 { font-size: 20px; margin: 32px 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+    h3 { font-size: 16px; margin: 20px 0 8px; }
+    .meta { color: var(--muted); font-size: 13px; }
+    .hero { background: linear-gradient(135deg,#102033,#163042); border:1px solid var(--line); border-radius:16px; padding:20px 22px; margin:18px 0 28px; }
+    .hero a { color:#7ef0ff; font-size: 20px; word-break: break-all; }
+    table { width:100%; border-collapse: collapse; font-size: 13.5px; }
+    th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+    th { background:#182236; }
+    .ok { color: var(--ok); }
+    .p0 { color: var(--p0); font-weight:700; }
+    .p1 { color: var(--p1); font-weight:700; }
+    .p2 { color: var(--p2); }
+    code { background:#0e1624; padding:1px 5px; border-radius:4px; font-size:12.5px; }
+    ul { margin: 6px 0 10px 20px; }
+    .note { color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>全球综合危机监测系统 · 终审报告</h1>
+  <p class="meta">评审方：<strong>grok-4.5</strong> · 日期：2026-08-13 · 对象：glm-5.2 阶段 2 交付 + 全项目运行面/代码</p>
+
+  <div class="hero">
+    <div>可直接打开的灾害中心公网链接（本机在线 + 隧道存活时有效）</div>
+    <p><a href="https://coupons-deeply-classical-equal.trycloudflare.com">https://coupons-deeply-classical-equal.trycloudflare.com</a></p>
+    <p class="note">源码仓库：<a href="https://github.com/s48401203a/global-crisis-monitor">https://github.com/s48401203a/global-crisis-monitor</a></p>
+    <p class="note">隧道断开后请运行仓库根目录 <code>公网预览.bat</code> 获取新地址。本机需保持 5173 / 8000 运行。</p>
+  </div>
+
+  <h2>1. 结论</h2>
+  <p>glm-5.2 的 B1–B5 主体成立：类型图层三处联动、反选、localStorage、dist 构建、简报空值兜底、规格 3.4/3.1/5.7/war 回写均已落地。全项目可演示、可克隆复现部署。</p>
+  <p>复审发现的 <strong>P0 为 0</strong>。已自动修复若干 P1/P2（见第 4 章）。服务模式现优先挂载 <code>web/dist</code>。</p>
+
+  <h2>2. glm-5.2 交付评审</h2>
+  <table>
+    <tr><th>任务</th><th>结论</th><th>说明</th></tr>
+    <tr><td>B3 类型图层</td><td class="ok">通过</td><td>地图点 / 列表 / effects / 巡览均走过滤后的 enriched；有全选/全不选/反选与 localStorage</td></tr>
+    <tr><td>B1 dist 流程</td><td class="ok">通过（有缺口已修）</td><td>vp build 可用；start.ps1 已补退出码与 public/ 变更检测</td></tr>
+    <tr><td>B4 简报</td><td class="ok">基本通过</td><td>metrics 空安全；confidence 缺失曾被 <code>|| 1</code> 短路，已修</td></tr>
+    <tr><td>B2 精度/提速</td><td class="ok">部分通过</td><td>refreshExpiredTiles 属实；prefetch 原未写死，已补 prefetchZoomDelta:4。z4→z12 实测 36 tile 合理。未启动 A7 代理</td></tr>
+    <tr><td>B5 规格回写</td><td class="ok">主体通过</td><td>3.4/3.1 表/5.7/war 已写；9.1/5.1 仍有旧句，标为残留文档债，不阻塞运行</td></tr>
+  </table>
+
+  <h2>3. 全项目复审发现</h2>
+  <table>
+    <tr><th>ID</th><th>级别</th><th>状态</th><th>问题</th></tr>
+    <tr><td>A6 / REV-03/07/08</td><td class="p1">P1</td><td class="ok">已修</td><td>8000 仍挂旧 static、on_event 废弃 → lifespan + 绝对路径挂 dist</td></tr>
+    <tr><td>WAR-AGE</td><td class="p1">P1</td><td class="ok">已修</td><td>战区 upsert 不刷新 occurred_at，7 天后离开默认窗</td></tr>
+    <tr><td>F01</td><td class="p1">P1</td><td class="ok">已修</td><td>confidence 缺失被写成 1，弹窗 “-” 失效</td></tr>
+    <tr><td>A8 / REV-09/10/11</td><td class="p2">P2</td><td class="ok">已修</td><td>limit 无下界、schema 缺 war 注释、零单测</td></tr>
+    <tr><td>HEALTH-STALE</td><td class="p2">P2</td><td class="ok">已修</td><td>openmeteo 6h 一轮却按 1h 判异常</td></tr>
+    <tr><td>F03/F04/F06</td><td class="p2">P2</td><td class="ok">已修</td><td>prefetch 显式化；build 检查退出码；关弹窗停地震波</td></tr>
+    <tr><td>F02</td><td class="p2">P2</td><td>文档债</td><td>规格 9.1/5.1 仍有「不使用瓦片 / 仅 DOC」旧句，与 3.1/5.7 矛盾</td></tr>
+    <tr><td>GDELT-429</td><td class="p2">P2</td><td>运行时</td><td>上游限流，非代码回归</td></tr>
+  </table>
+
+  <h2>4. 本轮自动修复清单</h2>
+  <ul>
+    <li><code>app/app/main.py</code>：lifespan、dist 绝对路径、USGS 回补改一次性 job</li>
+    <li><code>app/app/core/ingest.py</code>：war 刷新 occurred_at</li>
+    <li><code>app/app/api/routes_events.py</code>：limit ge=1</li>
+    <li><code>app/app/api/routes_health.py</code>：按源间隔 stale</li>
+    <li><code>setup/05-schema.sql</code> 与 <code>app/setup/05-schema.sql</code>：type 注释补 war</li>
+    <li><code>app/tests/</code>：7 项单测，<code>python -m tests.run_unit</code> 7/7</li>
+    <li><code>web/src/main.js</code>：confidence 空值、prefetchZoomDelta、弹窗 close 清理波纹</li>
+    <li><code>start.ps1</code>：build 失败不再谎报完成；public/ 变更触发重建</li>
+    <li><code>DEPLOY.md</code>：换机（含 Mark）部署说明</li>
+  </ul>
+
+  <h2>5. 运行面抽查</h2>
+  <ul>
+    <li>本机 <code>http://127.0.0.1:5173</code> HTTP 200</li>
+    <li>本机 <code>http://127.0.0.1:8000/api/health</code> 200</li>
+    <li><code>/api/events?limit=2</code> 返回 FeatureCollection</li>
+    <li><code>from app.main import app</code> 静态目录解析为 <code>D:\crisis\web\dist</code></li>
+    <li><code>vp build</code> 成功（index-DyCgv11X.js 等）</li>
+  </ul>
+
+  <h2>6. 仓库与部署范围</h2>
+  <p>仓库包含源码、SQL、国界/地名 GeoJSON、夹具、启动脚本、DEPLOY 说明与本报告。为安全<strong>不包含</strong>：<code>.env</code>、<code>secrets/</code>、<code>pgdata/</code>、venv、<code>node_modules</code>、WinSW exe、cloudflared 二进制。</p>
+  <p>在 Mark 或其他机器上请按 <code>DEPLOY.md</code>：装 PG17+PostGIS → 复制 <code>app/.env.example</code> → <code>pip install</code> → <code>vp build</code> → 启动 8000/5173。</p>
+
+  <h2>7. 公网链接（再次列出）</h2>
+  <p><strong>大屏：</strong> <a href="https://coupons-deeply-classical-equal.trycloudflare.com">https://coupons-deeply-classical-equal.trycloudflare.com</a></p>
+  <p><strong>源码：</strong> <a href="https://github.com/s48401203a/global-crisis-monitor">https://github.com/s48401203a/global-crisis-monitor</a></p>
+  <p class="note">本机关机、断网或关闭 cloudflared 后公网链接失效。演示无鉴权，勿广泛传播。</p>
+</div>
+</body>
+</html>

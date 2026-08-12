@@ -32,10 +32,22 @@ def health():
         "openmeteo": "Open-Meteo 洪水",
         "firms": "NASA 火点 FIRMS",
     }
+    # 按采集间隔判定过期，避免 6 小时一轮的 openmeteo 1 小时后被误判异常
+    STALE_SEC = {
+        "usgs": 600,
+        "emsc": 600,
+        "gdacs": 1800,
+        "eonet": 3600,
+        "gdelt": 3600,
+        "firms": 3600,
+        "war": 7200,
+        "openmeteo": 43200,
+    }
     sources = []
     for r in rows:
-        # 判定规则:连续失败 3 次以上,或超过 1 小时无成功采集 → 异常
-        stale = r.age_sec is None or r.age_sec > 3600
+        # 判定规则:连续失败 3 次以上,或超过该源阈值无成功采集 → 异常
+        limit = STALE_SEC.get(r.source, 3600)
+        stale = r.age_sec is None or r.age_sec > limit
         sources.append({
             "source": r.source,
             "source_zh": SOURCE_ZH.get(r.source, r.source),

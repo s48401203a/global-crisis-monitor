@@ -1,5 +1,9 @@
 # D:\crisis\app\app\main.py
+from __future__ import annotations
+
 import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
 
 # truststore 必须在任何网络调用之前注入(企业网络 SSL 拦截)
 import truststore
@@ -26,15 +30,19 @@ from .core.alerts import evaluate_alerts
 setup_logging()
 log = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="全球综合危机监测中心",
-    description="中文默认 · 公开数据聚合 · 本地演示系统",
-    version="1.0",
-)
-app.include_router(routes_events.router)
-app.include_router(routes_health.router)
-app.include_router(ws.router)
-app.mount("/", StaticFiles(directory="app/static", html=True), name="static")
+# app/app/main.py → 仓库根 D:\crisis
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WEB_DIST = REPO_ROOT / "web" / "dist"
+LEGACY_STATIC = Path(__file__).resolve().parent / "static"
+
+
+def _frontend_dir() -> Path:
+    """优先挂载 Vite 构建产物，缺失时回退旧 static（避免服务起不来）。"""
+    if (WEB_DIST / "index.html").is_file():
+        return WEB_DIST
+    log.warning("未找到 %s，回退 %s", WEB_DIST, LEGACY_STATIC)
+    return LEGACY_STATIC
+
 
 scheduler = BackgroundScheduler(
     jobstores={"default": SQLAlchemyJobStore(url=settings.database_url)},
@@ -48,12 +56,7 @@ scheduler = BackgroundScheduler(
 )
 
 
-@app.on_event("startup")
-def on_startup() -> None:
-    # 启动时用 all_day 回补一次,填补服务停机期间的空档
-    if settings.enable_usgs:
-        UsgsCollector(backfill=True).run()
-
+def _register_jobs() -> None:
     if settings.enable_usgs:
         scheduler.add_job(UsgsCollector().run, "interval",
                           seconds=settings.interval_usgs,
@@ -70,7 +73,6 @@ def on_startup() -> None:
         scheduler.add_job(GdeltCollector().run, "interval",
                           seconds=settings.interval_gdelt,
                           id="gdelt", replace_existing=True)
-    # 战争热点基线：始终注册，保证地图有冲突/战区点
     scheduler.add_job(WarHotspotsCollector().run, "interval",
                       seconds=3600,
                       id="war_hotspots", replace_existing=True)
@@ -78,7 +80,6 @@ def on_startup() -> None:
         scheduler.add_job(OpenMeteoFloodCollector().run, "interval",
                           seconds=settings.interval_openmeteo,
                           id="openmeteo", replace_existing=True)
-    # FIRMS 火点：默认关闭；开关 true 且配置 MAP_KEY 后注册调度（REV-01）
     if settings.enable_firms:
         interval_firms = getattr(settings, "interval_firms", 900) or 900
         scheduler.add_job(
@@ -90,16 +91,30 @@ def on_startup() -> None:
         )
         log.info("已注册 FIRMS 采集任务（interval=%ss）", interval_firms)
 
-    # 告警评估与采集解耦,独立跑
     scheduler.add_job(_alert_tick, "interval", seconds=60,
                       id="alerts", replace_existing=True)
-    scheduler.start()
 
-    # EMSC 走 WebSocket 常驻线程,不进 scheduler
+    # USGS 停机回补改为一次性 job，避免堵住 lifespan 启动
+    if settings.enable_usgs:
+        scheduler.add_job(
+            lambda: UsgsCollector(backfill=True).run(),
+            "date",
+            id="usgs_backfill_once",
+            replace_existing=True,
+        )
+
+
+def _start_runtime() -> None:
+    _register_jobs()
+    try:
+        scheduler.start()
+    except Exception:
+        log.exception("APScheduler 启动失败")
+        raise
+
     if settings.enable_emsc:
         start_emsc_listener()
 
-    # 启动时立即灌入战争热点 + 尝试 GDELT
     try:
         WarHotspotsCollector().run()
     except Exception as e:
@@ -113,11 +128,38 @@ def on_startup() -> None:
     log.info("系统启动完成,已注册 %d 个定时任务", len(scheduler.get_jobs()))
 
 
+def _stop_runtime() -> None:
+    try:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+    except Exception:
+        log.exception("APScheduler 关闭异常")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    _start_runtime()
+    try:
+        yield
+    finally:
+        _stop_runtime()
+
+
+app = FastAPI(
+    title="全球综合危机监测中心",
+    description="中文默认 · 公开数据聚合 · 本地演示系统",
+    version="1.0",
+    lifespan=lifespan,
+)
+app.include_router(routes_events.router)
+app.include_router(routes_health.router)
+app.include_router(ws.router)
+
+_front = _frontend_dir()
+app.mount("/", StaticFiles(directory=str(_front), html=True), name="static")
+log.info("静态前端目录: %s", _front)
+
+
 def _alert_tick() -> None:
     for a in evaluate_alerts():
         ws.broadcast_alert(a)
-
-
-@app.on_event("shutdown")
-def on_shutdown() -> None:
-    scheduler.shutdown(wait=False)

@@ -111,10 +111,12 @@ def _update_event(s, eid: int, ev: NormalizedEvent, sev: float) -> None:
                primary_source = CASE WHEN :take THEN :src ELSE primary_source END,
                -- footprint 总是取最新(台风路径持续延长)
                footprint = CASE WHEN CAST(:fp AS text) IS NULL THEN footprint
-                                ELSE ST_GeomFromGeoJSON(CAST(:fp AS text))::geography END
+                                ELSE ST_GeomFromGeoJSON(CAST(:fp AS text))::geography END,
+               -- 战区基线刷新发生时间，避免 7 天窗口后从默认列表消失
+               occurred_at = CASE WHEN :src = 'war' THEN :occ ELSE occurred_at END
          WHERE id = :eid
     """), {
         "eid": eid, "sev": sev, "conf": ev.confidence, "take": take_over,
         "lon": ev.lon, "lat": ev.lat, "mv": ev.magnitude_value,
-        "src": ev.source, "fp": fp,
+        "src": ev.source, "fp": fp, "occ": ev.occurred_at,
     })

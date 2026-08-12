@@ -1627,6 +1627,7 @@ const map = new maplibregl.Map({
   maxTileCacheSize: 120,
   // 静态底图（Esri/OpenTopoMap）不刷新过期瓦片，避免视野回到已加载区域时重复请求
   refreshExpiredTiles: false,
+  prefetchZoomDelta: 4,
 });
 map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
 map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }), "bottom-right");
@@ -2198,7 +2199,7 @@ map.on("load", async () => {
     paint: {
       "circle-radius": ["interpolate", ["linear"], ["get", "severity"], 0, 3.5, 0.5, 8, 1, 15],
       "circle-color": colorByMarker,
-      "circle-opacity": ["*", 0.9, ["get", "confidence"]],
+      "circle-opacity": ["*", 0.9, ["coalesce", ["get", "confidence"], 1]],
       "circle-stroke-width": 1.2,
       "circle-stroke-color": "#06090f",
     },
@@ -2932,7 +2933,10 @@ function applyFeatures(all) {
       properties: {
         ...p,
         is_live: live ? 1 : 0,
-        confidence: Number(p.confidence) || 1,
+        confidence: (() => {
+          const c = Number(p.confidence);
+          return Number.isFinite(c) ? c : null;
+        })(),
         severity: Number(p.severity) || 0,
         marker_color: mc,
       },
@@ -3082,6 +3086,17 @@ function showEventPopup(p, lngLat) {
     .setLngLat([lon, lat])
     .setHTML(buildPopupHtml(props))
     .addTo(map);
+  tourPopup.on("close", () => {
+    if (_eqWaveTimer) {
+      cancelAnimationFrame(_eqWaveTimer);
+      _eqWaveTimer = null;
+    }
+    _eqWaveExtras = [];
+    if (tourActiveId != null && String(tourActiveId) === String(p.id)) {
+      tourActiveId = null;
+      refreshEffectsFocus(null);
+    }
+  });
   tourActiveId = p.id;
   highlightTourItem(p.id);
   refreshEffectsFocus(p.id);
