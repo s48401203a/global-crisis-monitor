@@ -1,0 +1,145 @@
+{
+  "_comment": "B4 手测夹具：覆盖 9 类 + 边界（台风轨迹/洪水箭头/空值降级）。5173 dev 下访问 ?fixtures=test 加载。虚构坐标，无真实数据。",
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [138.0, 35.0] },
+      "properties": {
+        "id": "fx-eq-1", "type": "earthquake", "category": "natural",
+        "magnitude": 6.5, "unit": "M",
+        "country": "JPN", "occurred_at": "2026-08-12T06:00:00Z", "first_seen_at": "2026-08-12T06:30:00Z",
+        "source": "usgs", "confidence": 0.9, "severity": 0.6,
+        "metrics": { "depth_km": 25, "usgs_alert": "yellow" }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [139.69, 35.69] },
+      "properties": {
+        "id": "fx-cyc-1", "type": "cyclone", "category": "natural",
+        "magnitude": 95, "unit": "kts",
+        "country": "JPN", "occurred_at": "2026-08-12T03:00:00Z", "first_seen_at": "2026-08-12T03:30:00Z",
+        "source": "gdacs", "confidence": 0.85, "severity": 0.7,
+        "footprint": "{\"type\":\"LineString\",\"coordinates\":[[130.0,20.0],[133.0,25.0],[136.0,30.0],[139.0,33.0],[142.0,36.0]]}",
+        "metrics": { "gdacs_alert": "orange" }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [120.0, 30.0] },
+      "properties": {
+        "id": "fx-flood-1", "type": "flood", "category": "natural",
+        "magnitude": 1200, "unit": "m3/s",
+        "country": "CHN", "occurred_at": "2026-08-12T05:00:00Z", "first_seen_at": "2026-08-12T05:30:00Z",
+        "source": "openmeteo", "confidence": 0.7, "severity": 0.5,
+        "metrics": { "gdacs_alert": "red" }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-120.0, 38.0] },
+      "properties": {
+        "id": "fx-fire-1", "type": "wildfire", "category": "natural",
+        "magnitude": 5000, "unit": "acres",
+        "country": "USA", "occurred_at": "2026-08-11T20:00:00Z", "first_seen_at": "2026-08-12T01:00:00Z",
+        "source": "eonet", "confidence": 0.6, "severity": 0.5,
+        "metrics": {}
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [-100.0, 19.0] },
+      "properties": {
+        "id": "fx-vol-1", "type": "volcano", "category": "natural",
+        "magnitude": 3, "unit": "level",
+        "country": "MEX", "occurred_at": "2026-08-10T12:00:00Z", "first_seen_at": "2026-08-10T13:00:00Z",
+        "source": "eonet", "confidence": 0.5, "severity": 0.4,
+        "metrics": {}
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [20.0, -10.0] },
+      "properties": {
+        "id": "fx-drought-1", "type": "drought", "category": "natural",
+        "country": "COD", "occurred_at": "2026-08-01T00:00:00Z", "first_seen_at": "2026-08-09T00:00:00Z",
+        "source": "gdacs", "confidence": 0.5, "severity": 0.4,
+        "metrics": { "gdacs_alert": "yellow" }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [37.0, 35.0] },
+      "properties": {
+        "id": "fx-clash-1", "type": "armed_clash", "category": "conflict",
+        "country": "SYR", "occurred_at": "2026-08-12T04:00:00Z", "first_seen_at": "2026-08-12T04:30:00Z",
+        "source": "gdelt", "confidence": 0.6, "severity": 0.5,
+        "unit": "events", "magnitude": 12,
+        "metrics": { "event_count": 12 }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [30.0, 50.0] },
+      "properties": {
+        "id": "fx-crisis-1", "type": "crisis_signal", "category": "conflict",
+        "country": "UKR", "occurred_at": "2026-08-12T07:00:00Z", "first_seen_at": "2026-08-12T07:15:00Z",
+        "source": "gdelt", "confidence": 0.8, "severity": 0.7,
+        "unit": "articles", "magnitude": 45,
+        "metrics": { "article_count": 45 }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [37.0, 34.0] },
+      "properties": {
+        "id": "fx-war-1", "type": "war", "category": "conflict",
+        "country": "SYR", "occurred_at": "2026-08-12T02:00:00Z", "first_seen_at": "2026-08-12T02:30:00Z",
+        "source": "gdelt", "confidence": 0.75, "severity": 0.8,
+        "metrics": { "war_level": "high" }
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [130.0, 30.0] },
+      "properties": {
+        "id": "fx-cyc-2", "type": "cyclone", "category": "natural",
+        "country": "JPN", "occurred_at": "2026-08-12T08:00:00Z", "first_seen_at": "2026-08-12T08:30:00Z",
+        "source": "gdacs", "confidence": 0.4, "severity": 0.3,
+        "metrics": {}
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [115.0, 25.0] },
+      "properties": {
+        "id": "fx-flood-2", "type": "flood", "category": "natural",
+        "country": "CHN", "occurred_at": "2026-08-12T09:00:00Z", "first_seen_at": "2026-08-12T09:30:00Z",
+        "source": "openmeteo", "confidence": 0.5, "severity": 0.3,
+        "metrics": {}
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [140.0, 40.0] },
+      "properties": {
+        "id": "fx-eq-2", "type": "earthquake", "category": "natural",
+        "country": "JPN", "occurred_at": "2026-08-12T10:00:00Z", "first_seen_at": "2026-08-12T10:30:00Z",
+        "source": "usgs", "confidence": 0.3, "severity": 0.2,
+        "metrics": {}
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": { "type": "Point", "coordinates": [110.0, 22.0] },
+      "properties": {
+        "id": "fx-flood-3", "type": "flood", "category": "natural",
+        "magnitude": 800, "unit": "m3/s",
+        "country": "CHN", "occurred_at": "2026-08-12T11:00:00Z",
+        "source": "openmeteo", "severity": 0.4,
+        "metrics": {}
+      }
+    }
+  ]
+}

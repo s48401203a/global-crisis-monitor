@@ -1,0 +1,27 @@
+{
+  "name": "crisis-monitor-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp dev --host --open",
+    "build": "vp build",
+    "preview": "vp preview --host",
+    "prepare": "vp config"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.9",
+    "vite-plus": "0.2.9"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.2.9"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "12.0.2",
+      "onFail": "download"
+    }
+  }
+}

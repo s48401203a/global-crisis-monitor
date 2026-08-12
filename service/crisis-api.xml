@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<service>
+  <id>crisis-api</id>
+  <name>Crisis Monitor (FastAPI + APScheduler)</name>
+  <description>全球综合危机监测系统</description>
+
+  <executable>D:\crisis\app\.venv\Scripts\python.exe</executable>
+  <arguments>-m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1</arguments>
+  <workingdirectory>D:\crisis\app</workingdirectory>
+
+  <startmode>Automatic</startmode>
+  <delayedAutoStart/>
+  <depend>Tcpip</depend>
+  <depend>Dnscache</depend>
+  <!-- 关键:等 PostgreSQL 服务起来后再启动,否则首次连接必失败 -->
+  <depend>postgresql-x64-17</depend>
+
+  <!-- 崩溃后阶梯式重启 -->
+  <onfailure action="restart" delay="10 sec"/>
+  <onfailure action="restart" delay="30 sec"/>
+  <onfailure action="restart" delay="60 sec"/>
+  <resetfailure>1 hour</resetfailure>
+
+  <logpath>D:\crisis\logs</logpath>
+  <!-- 必须写 roll-by-size。官方文档示例里的 "roll" 不读 sizeThreshold -->
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>10</keepFiles>
+  </log>
+
+  <!-- 红线 #2:服务化后 stdout 被重定向,不设这两项则输出中文即崩溃 -->
+  <env name="PYTHONUTF8" value="1"/>
+  <env name="PYTHONIOENCODING" value="utf-8:backslashreplace"/>
+  <env name="PYTHONUNBUFFERED" value="1"/>
+
+  <stoptimeout>30 sec</stoptimeout>
+  <stopparentprocessfirst>true</stopparentprocessfirst>
+</service>

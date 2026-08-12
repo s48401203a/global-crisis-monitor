@@ -1,0 +1,18 @@
+# D:\crisis\app\requirements.txt
+# 全部版本经 2026-08-11 实测确认,不要自行升级
+fastapi==0.141.1
+uvicorn==0.52.1
+APScheduler==3.11.3          # 4.0 仍是 pre-release,禁止升级
+SQLAlchemy==2.0.51
+GeoAlchemy2==0.20.0
+psycopg[binary]==3.3.4       # 同步模式使用,见红线 #1
+shapely==2.1.2
+httpx==0.28.1
+websockets==15.0.1          # EMSC 实时推送
+pydantic==2.12.3
+pydantic-settings==2.7.1
+cachetools==7.1.7
+tzdata==2026.3               # Windows 必需,无此包时区解析必失败
+concurrent-log-handler==0.9.28   # Windows 日志轮转必需
+truststore==0.10.4          # 企业网络 SSL 拦截时必需
+python-dotenv==1.0.1

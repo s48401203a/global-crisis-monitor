@@ -1,0 +1,43 @@
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+secrets/
+
+# Local runtime data and generated logs
+pgdata/
+logs/
+backups/
+*.log
+*.pid
+
+# Python environments and generated files
+app/.venv/
+**/__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Frontend dependencies and build output
+**/node_modules/
+web/dist/
+web/.vite/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local tools and OS/editor metadata
+.codegraph/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Downloaded WinSW wrapper binary; retain its XML configuration in source control
+service/*.exe
+
+# Playwright CLI local dumps
+web/.playwright-cli/
+
