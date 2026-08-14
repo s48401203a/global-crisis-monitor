@@ -11,6 +11,15 @@
 - Node.js 20+（仅构建前端时需要）
 - 本机管理员权限（装库、装服务）
 
+macOS 本机部署用 Homebrew，不引入 Docker：
+
+```bash
+bash setup/macos-deploy.sh
+./start.sh --open
+```
+
+入口：`http://127.0.0.1:5173`（Vite HMR）、`http://127.0.0.1:8000/api/health`。
+
 ## 1. 克隆
 
 ```powershell

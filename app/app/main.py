@@ -95,13 +95,18 @@ def _register_jobs() -> None:
                       id="alerts", replace_existing=True)
 
     # USGS 停机回补改为一次性 job，避免堵住 lifespan 启动
+    # SQLAlchemyJobStore 不能序列化 lambda，必须用模块级可引用函数
     if settings.enable_usgs:
         scheduler.add_job(
-            lambda: UsgsCollector(backfill=True).run(),
+            _usgs_backfill_once,
             "date",
             id="usgs_backfill_once",
             replace_existing=True,
         )
+
+
+def _usgs_backfill_once() -> None:
+    UsgsCollector(backfill=True).run()
 
 
 def _start_runtime() -> None:

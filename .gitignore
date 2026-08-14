@@ -10,6 +10,8 @@ logs/
 backups/
 *.log
 *.pid
+.vite-dev.url
+.vite-dev.pid
 
 # Python environments and generated files
 app/.venv/

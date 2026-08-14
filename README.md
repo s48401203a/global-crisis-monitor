@@ -23,6 +23,23 @@ Copy-Item app\.env.example app\.env
 
 完整换机部署步骤见 [DEPLOY.md](./DEPLOY.md)。终审报告见 [docs/终审报告-grok-4.5.html](./docs/终审报告-grok-4.5.html)。
 
+## macOS 本机部署
+
+规格原文按 Windows 锁定；本仓库在 macOS 上用 Homebrew PostgreSQL 17 + PostGIS，不用 Docker / WinSW。
+
+```bash
+bash setup/macos-deploy.sh
+./start.sh --open
+./stop.sh
+```
+
+| 地址 | 说明 |
+|------|------|
+| http://127.0.0.1:5173 | 开发主界面（Vite HMR，`/api` `/ws` 代理到 8000） |
+| http://127.0.0.1:8000 | 后端 API + `web/dist` 静态页 |
+
+密码只写在 `app/.env` 与 `secrets/pg_superpass`，不要提交。
+
 ## 目录
 
 | 路径 | 说明 |
@@ -30,6 +47,8 @@ Copy-Item app\.env.example app\.env
 | `app/` | FastAPI + APScheduler + 采集器 |
 | `web/` | 前端开发源（MapLibre） |
 | `setup/` | 安装 / 建库脚本 |
+| `setup/macos-deploy.sh` | macOS 一键落地（Homebrew PostgreSQL 17 + PostGIS） |
+| `start.sh` / `stop.sh` | macOS 一键启动 / 停止 |
 | `service/` | WinSW 服务定义（不含 exe） |
 | `AGENTS.md` | Agent 协作约定 |
 | `项目进度记录.md` | 进度与 TODO |
