@@ -11,6 +11,12 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $LogDir = Join-Path $Root 'logs'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $Log = Join-Path $LogDir 'start-script.log'
+$PyRetain = Join-Path $Root 'app\.venv\Scripts\python.exe'
+if (Test-Path $PyRetain) {
+  Push-Location (Join-Path $Root 'app')
+  & $PyRetain -m app.log_retention 2>$null | Out-Null
+  Pop-Location
+}
 
 function Log([string]$m) {
   $line = "[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $m

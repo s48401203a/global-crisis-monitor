@@ -3,6 +3,7 @@
 import logging, sys
 from concurrent_log_handler import ConcurrentRotatingFileHandler
 from .config import settings
+from .log_retention import DEFAULT_MAX_BYTES, enforce_log_budget
 
 
 def setup_logging() -> None:
@@ -13,10 +14,11 @@ def setup_logging() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    # 文件:必须显式 encoding,否则默认 locale(cp936)
+    # 单文件 25MB 轮转；目录总量由 log_retention 压到 500MB
     fh = ConcurrentRotatingFileHandler(
         str(settings.log_dir / "app.log"),
-        maxBytes=10 * 1024 * 1024, backupCount=10,
+        maxBytes=25 * 1024 * 1024,
+        backupCount=8,
         encoding="utf-8",
     )
     fh.setFormatter(fmt)
@@ -37,3 +39,9 @@ def setup_logging() -> None:
     # 降噪
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("apscheduler.executors").setLevel(logging.WARNING)
+
+    try:
+        cap = int(getattr(settings, "log_max_bytes", DEFAULT_MAX_BYTES) or DEFAULT_MAX_BYTES)
+        enforce_log_budget(settings.log_dir, cap)
+    except Exception:
+        logging.getLogger(__name__).exception("启动时清理日志失败")

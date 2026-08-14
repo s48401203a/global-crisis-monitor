@@ -1,4 +1,14 @@
 import "./styles.css";
+import { initDockablePanels, refreshDockTitles, visibleShellInsets } from "./dock-panels.js";
+import { parseSearchQuery, matchSearchRecord } from "./event-search.js";
+import {
+  getCityLabelCollection,
+  placeBounds,
+  placesAt,
+  primaryPlace,
+  registerExtraPlaces,
+  resolvePlaceFromValues,
+} from "./region-gazetteer.js";
 
 /* ========== 界面语言：中文 / English（联动地图地名） ========== */
 let uiLang = (() => {
@@ -14,6 +24,7 @@ const ZH = {
     earthquake: "地震",
     cyclone: "气旋/台风",
     flood: "洪水",
+    rainstorm: "暴雨预警",
     wildfire: "野火",
     volcano: "火山",
     drought: "干旱",
@@ -31,6 +42,8 @@ const ZH = {
     war: "战争冲突热点",
     openmeteo: "Open-Meteo 洪水",
     firms: "NASA 火点 FIRMS",
+    cma: "中央气象台预警",
+    cenc: "中国地震台网",
   },
   status: { ok: "正常", error: "异常" },
   units: {
@@ -38,6 +51,7 @@ const ZH = {
     kts: "节",
     acres: "英亩",
     "m3/s": "立方米/秒",
+    alert: "预警等级",
     articles: "篇报道",
     K: "亮温",
   },
@@ -57,6 +71,8 @@ const ZH = {
   loadingSource: "正在连接数据源…",
   loadingEvents: "正在加载事件…",
   emptyEvents: "当前筛选下暂无事件",
+  emptySearch: "没有匹配当前搜索的事件",
+  placeEmpty: (name) => `已识别「${name}」，当前时间窗口内该地区暂无事件`,
   items: (n) => `${n} 条`,
   latest: "最新优先",
   liveCount: (n) => `${n} 条进行中`,
@@ -79,6 +95,7 @@ const EN = {
     earthquake: "Earthquake",
     cyclone: "Cyclone/Typhoon",
     flood: "Flood",
+    rainstorm: "Rainstorm warning",
     wildfire: "Wildfire",
     volcano: "Volcano",
     drought: "Drought",
@@ -96,6 +113,8 @@ const EN = {
     war: "War hotspots",
     openmeteo: "Open-Meteo flood",
     firms: "NASA FIRMS",
+    cma: "CMA weather alerts",
+    cenc: "CENC earthquake",
   },
   status: { ok: "OK", error: "Error" },
   units: {
@@ -103,6 +122,7 @@ const EN = {
     kts: "kts",
     acres: "acres",
     "m3/s": "m³/s",
+    alert: "alert",
     articles: "articles",
     K: "K",
   },
@@ -124,6 +144,8 @@ const EN = {
   loadingSource: "Connecting sources…",
   loadingEvents: "Loading events…",
   emptyEvents: "No events under current filters",
+  emptySearch: "No events match this search",
+  placeEmpty: (name) => `Recognized “${name}”, no events there in this window`,
   items: (n) => `${n}`,
   latest: "Newest first",
   liveCount: (n) => `${n} live`,
@@ -157,6 +179,7 @@ const UI_I18N = {
     globe: "地球仪",
     sat: "卫星",
     topo: "地形",
+    stTitle: "实时统计",
     stTotal: "事件总数",
     stNat: "自然灾害",
     stCon: "战争/冲突",
@@ -192,6 +215,12 @@ const UI_I18N = {
     globeTitle: "悬浮立体地球仪",
     satTitle: "卫星影像地表",
     topoTitle: "地形地貌地表",
+    searchPh: "组合搜索：杭州　河南　Tokyo　London　类型:冲突",
+    searchTitle: "中国城市用中文；其他国家城市用英文。空格为且，OR 为或，-排除",
+    searchPlaceEmpty: "已识别该地区，当前时间窗口内暂无事件",
+    searchHits: "命中",
+    searchNoEvent: "无事件",
+    searchLocated: "已定位",
   },
   en: {
     title: "Global Crisis Monitor",
@@ -203,6 +232,7 @@ const UI_I18N = {
     globe: "Globe",
     sat: "Satellite",
     topo: "Terrain",
+    stTitle: "Live stats",
     stTotal: "Total events",
     stNat: "Natural hazards",
     stCon: "War / Conflict",
@@ -238,6 +268,12 @@ const UI_I18N = {
     globeTitle: "Floating 3D globe",
     satTitle: "Satellite imagery",
     topoTitle: "Topographic surface",
+    searchPh: "Search: Hangzhou  Henan  Tokyo  London  type:war",
+    searchTitle: "China cities in Chinese; other cities in English. Space=AND, OR=or",
+    searchPlaceEmpty: "Place recognized, but no events in this time window",
+    searchHits: "Hits",
+    searchNoEvent: "No events",
+    searchLocated: "Located",
   },
 };
 
@@ -248,6 +284,8 @@ const LOCAL_BOUNDS = [
 const LOCAL_CENTER = [104.5, 35.0];
 let currentView = "global";
 let lastFeatures = [];
+let searchRaw = "";
+let searchParsed = null;
 let mapReady = false;
 let panelsCollapsed = (() => {
   try {
@@ -283,6 +321,7 @@ const TYPE_COLORS = {
   earthquake: "#c9a227", // 默认琥珀金 · 小震
   cyclone: "#5b8def", // 天蓝 · 气旋
   flood: "#2bb0ed", // 亮青蓝 · 洪水
+  rainstorm: "#38bdf8", // 雨青 · 暴雨预警
   wildfire: "#ff5c33", // 焰橙 · 野火
   volcano: "#d946ef", // 品红 · 火山
   drought: "#a78b4a", // 枯沙 · 干旱
@@ -299,6 +338,7 @@ const FILTERABLE_TYPES = [
   { type: "earthquake", category: "natural" },
   { type: "cyclone", category: "natural" },
   { type: "flood", category: "natural" },
+  { type: "rainstorm", category: "natural" },
   { type: "wildfire", category: "natural" },
   { type: "volcano", category: "natural" },
   { type: "drought", category: "natural" },
@@ -449,6 +489,86 @@ function floodBearingDeg(p) {
   return (id * 47 + Math.round((Number(p.magnitude) || 0) * 13)) % 360;
 }
 
+function isCmaAlert(p) {
+  if (!p) return false;
+  if (p.source === "cma" || p.unit === "alert") return true;
+  const met = parseMetrics(p);
+  return Boolean(met.cma_level || met.cma_alertscore);
+}
+
+function cmaAlertBlob(p) {
+  const met = parseMetrics(p);
+  return `${p?.headline || ""} ${met.cma_headline || ""}`;
+}
+
+function parseCmaLevelFromText(text) {
+  const t = String(text || "");
+  if (/红色预警|红预警/.test(t)) return "红";
+  if (/橙色预警|橙预警/.test(t)) return "橙";
+  if (/黄色预警|黄预警/.test(t)) return "黄";
+  if (/蓝色预警|蓝预警/.test(t)) return "蓝";
+  return null;
+}
+
+function cmaSignalLevel(p) {
+  return parseCmaLevelFromText(cmaAlertBlob(p)) || parseMetrics(p).cma_level || null;
+}
+
+function officialAlertTone(p) {
+  const met = parseMetrics(p);
+  const raw = met.gdacs_alert || met.usgs_alert;
+  if (raw) {
+    const k = String(raw).toLowerCase();
+    if (["green", "yellow", "orange", "red"].includes(k)) return k;
+  }
+  const lv = cmaSignalLevel(p);
+  if (lv === "红") return "red";
+  if (lv === "橙") return "orange";
+  if (lv === "黄") return "yellow";
+  if (lv === "蓝") return "green";
+  return null;
+}
+
+function isMinorCmaAlert(p) {
+  const lv = cmaSignalLevel(p);
+  return lv === "蓝" || lv === "黄";
+}
+
+function remapCmaDisplayType(p) {
+  if (!p || !isCmaAlert(p)) return p?.type;
+  const blob = cmaAlertBlob(p);
+  if (/台风|热带风暴|热带低压|风暴潮/.test(blob)) return "cyclone";
+  if (/山洪|洪水/.test(blob)) return "flood";
+  if (/暴雨|强降雨|地质灾害/.test(blob)) return "rainstorm";
+  if (/森林火|草原火/.test(blob)) return "wildfire";
+  if (/干旱/.test(blob)) return "drought";
+  return p.type;
+}
+
+function normalizeEventFeature(f) {
+  const p = (f && f.properties) || {};
+  const type = remapCmaDisplayType(p) || p.type;
+  const lv = cmaSignalLevel(p);
+  const met = { ...parseMetrics(p) };
+  if (lv && met.cma_level !== lv) met.cma_level = lv;
+  return {
+    ...f,
+    properties: { ...p, type, metrics: met },
+  };
+}
+
+/** 仅实测径流/山洪画箭头；气象暴雨预警不画 */
+function shouldDrawFloodArrow(p) {
+  if (!p) return false;
+  if (p.type !== "flood" && p.type !== "landslide" && p.type !== "debris_flow") return false;
+  if (isCmaAlert(p) || p.unit === "alert") return false;
+  const sev = Number(p.severity);
+  const mag = Number(p.magnitude);
+  if (Number.isFinite(sev) && sev < 0.78) return false;
+  if (p.unit === "m3/s" && Number.isFinite(mag) && mag < 80) return false;
+  return true;
+}
+
 /** 当前聚焦事件 id（用于特效层 focused 标记） */
 let effectsFocusId = null;
 /** 地震波扩散动效临时环（叠加在 effects 源上） */
@@ -518,7 +638,18 @@ function buildBrief(p) {
       : `${when} ${place} 野火：${area}${grade.text}。点位为当前目录记录位置。`;
   }
 
+  if (t === "rainstorm") {
+    return en
+      ? `${when} ${place} rainstorm warning: ${grade.text}. Official CMA alert, not a measured river flood.`
+      : `${when} ${place} 气象暴雨预警：${grade.text}。这是中央气象台预警信号，不是实测河道洪水。`;
+  }
+
   if (t === "flood" || t === "landslide" || t === "debris_flow") {
+    if (isCmaAlert(p)) {
+      return en
+        ? `${when} ${place} flood-risk warning: ${grade.text}. Meteorological/hydrology alert.`
+        : `${when} ${place} 山洪/洪水气象风险预警：${grade.text}。`;
+    }
     const kind = t === "flood" ? (en ? "Flood" : "洪水") : en ? "Landslide/debris flow" : "泥石流/滑坡";
     const flow =
       mag != null && t === "flood"
@@ -527,8 +658,8 @@ function buildBrief(p) {
           : `监测径流量约 ${fmtNum(mag)} m³/s，`
         : "";
     return en
-      ? `${when} ${place} ${kind}: ${flow}${grade.text}. Flow arrow when zoomed/focused.`
-      : `${when} ${place} ${kind}：${flow}${grade.text}。放大或预览时地图显示示意流向箭头。`;
+      ? `${when} ${place} ${kind}: ${flow}${grade.text}.`
+      : `${when} ${place} ${kind}：${flow}${grade.text}。`;
   }
 
   if (t === "volcano") {
@@ -642,14 +773,16 @@ function buildEffectFeatures(pointFeats, focusId) {
       }
     }
 
-    // 洪水 / 泥石流示意方向（仅放大 zoom≥5.5 或聚焦预览时由图层 filter 显示）
-    if (p.type === "flood" || p.type === "landslide" || p.type === "debris_flow") {
+    // 洪水流向：只给实测径流；气象暴雨预警不画。
+    if (shouldDrawFloodArrow(p)) {
+      const sev = Number(p.severity) || 0;
       const brg = floodBearingDeg(p);
-      const len = 45;
+      const len = focused ? 16 : 9;
       const tip = destPoint(lon, lat, brg, len);
-      const mid = destPoint(lon, lat, brg, len * 0.7);
-      const left = destPoint(mid[0], mid[1], brg + 140, 8);
-      const right = destPoint(mid[0], mid[1], brg - 140, 8);
+      const mid = destPoint(lon, lat, brg, len * 0.74);
+      const wing = focused ? 3.2 : 2.1;
+      const left = destPoint(mid[0], mid[1], brg + 150, wing);
+      const right = destPoint(mid[0], mid[1], brg - 150, wing);
       out.push({
         type: "Feature",
         geometry: { type: "LineString", coordinates: [[lon, lat], tip] },
@@ -659,6 +792,9 @@ function buildEffectFeatures(pointFeats, focusId) {
           marker_color: color,
           focused,
           bearing: brg,
+          sev,
+          lon,
+          lat,
         },
       });
       out.push({
@@ -670,11 +806,52 @@ function buildEffectFeatures(pointFeats, focusId) {
           marker_color: color,
           focused,
           bearing: brg,
+          sev,
+          lon,
+          lat,
         },
       });
     }
   }
-  return out;
+  return thinFloodDirFeatures(out);
+}
+
+function thinFloodDirFeatures(features) {
+  const unfocused = [];
+  const rest = [];
+  for (const f of features) {
+    if (f.properties?.effect === "flood_dir" && !f.properties.focused) unfocused.push(f);
+    else rest.push(f);
+  }
+  if (!unfocused.length) return features;
+  const byId = new Map();
+  for (const f of unfocused) {
+    const id = f.properties.parent_id;
+    if (!byId.has(id)) byId.set(id, []);
+    byId.get(id).push(f);
+  }
+  const ranked = [...byId.entries()]
+    .map(([id, feats]) => ({
+      id,
+      sev: Number(feats[0].properties.sev) || 0,
+      lon: Number(feats[0].properties.lon),
+      lat: Number(feats[0].properties.lat),
+      feats,
+    }))
+    .sort((a, b) => b.sev - a.sev);
+  const kept = [];
+  const used = [];
+  const cell = 2.4;
+  for (const it of ranked) {
+    if (kept.length >= 3) break;
+    const gx = Math.round(it.lon / cell);
+    const gy = Math.round(it.lat / cell);
+    if (used.some(([x, y]) => x === gx && y === gy)) continue;
+    used.push([gx, gy]);
+    kept.push(it.id);
+  }
+  const keepIds = new Set(kept);
+  return rest.concat(unfocused.filter((f) => keepIds.has(f.properties.parent_id)));
 }
 
 /**
@@ -829,15 +1006,14 @@ function realGrade(p) {
     p.magnitude != null && p.magnitude !== "" && p.magnitude !== "null"
       ? Number(p.magnitude)
       : null;
-  const alertRaw = met.gdacs_alert || met.usgs_alert || null;
-  const alertKey = alertRaw ? String(alertRaw).toLowerCase() : "";
+  const alertTone = officialAlertTone(p);
+  const alertKey = alertTone || "";
 
-  // 官方警报色（GDACS / USGS alert）
+  // 官方警报色（GDACS / USGS / 中央气象台）
   const en = uiLang === "en";
   const alertZh = en
     ? { green: "Green", yellow: "Yellow", orange: "Orange", red: "Red" }
     : { green: "绿色", yellow: "黄色", orange: "橙色", red: "红色" };
-  const alertTone = ["green", "yellow", "orange", "red"].includes(alertKey) ? alertKey : null;
 
   if (t === "earthquake") {
     if (mag != null && Number.isFinite(mag)) {
@@ -926,11 +1102,27 @@ function realGrade(p) {
     return { text: en ? "Burn area n/a" : "火场规模未定", tone: "neutral" };
   }
 
+  if (t === "rainstorm") {
+    if (alertTone) {
+      return {
+        text: en ? `${alertZh[alertKey]} rainstorm warning` : `${alertZh[alertKey]}暴雨预警`,
+        tone: alertTone,
+      };
+    }
+    return { text: en ? "Rainstorm warning" : "暴雨预警", tone: "orange" };
+  }
+
   if (t === "flood") {
+    if (isCmaAlert(p) && alertTone) {
+      return {
+        text: en ? `${alertZh[alertKey]} flood-risk warning` : `${alertZh[alertKey]}山洪/洪水风险预警`,
+        tone: alertTone,
+      };
+    }
     if (alertTone) {
       return {
         text:
-          mag != null && Number.isFinite(mag)
+          mag != null && Number.isFinite(mag) && p.unit !== "alert"
             ? en
               ? `${alertZh[alertKey]} alert · discharge ${fmtNum(mag)} m³/s`
               : `${alertZh[alertKey]}警报 · 径流 ${fmtNum(mag)} m³/s`
@@ -940,7 +1132,7 @@ function realGrade(p) {
         tone: alertTone,
       };
     }
-    if (mag != null && Number.isFinite(mag)) {
+    if (mag != null && Number.isFinite(mag) && p.unit !== "alert") {
       return { text: en ? `Discharge ${fmtNum(mag)} m³/s` : `径流量 ${fmtNum(mag)} m³/s`, tone: "yellow" };
     }
     return { text: en ? "Flood grade n/a" : "洪水等级未定", tone: "neutral" };
@@ -1480,7 +1672,7 @@ function chineseHeadline(p) {
   }
 
   // 标题里还没有类型字样时补上
-  if (!/地震|野火|洪水|火山|干旱|气旋|台风|冲突|危机/.test(out)) {
+  if (!/地震|野火|洪水|暴雨|预警|火山|干旱|气旋|台风|冲突|危机/.test(out)) {
     out = `${out} · ${typ}`;
   }
   return out;
@@ -1494,11 +1686,13 @@ function renderTypeLegend() {
   const el = document.getElementById("typeLegend");
   if (!el) return;
 
-  // 全量统计（不受类型筛选影响，便于用户看到「库里有多少」）
+  // 全量统计（不含蓝/黄日常预警；暴雨从洪水中拆出）
   const counts = {};
   for (const it of FILTERABLE_TYPES) counts[it.type] = 0;
   for (const f of lastFeatures) {
-    const t = f.properties && f.properties.type;
+    const nf = normalizeEventFeature(f);
+    if (isMinorCmaAlert(nf.properties || {})) continue;
+    const t = nf.properties && nf.properties.type;
     if (t && counts[t] != null) counts[t] += 1;
   }
 
@@ -1609,7 +1803,7 @@ const map = new maplibregl.Map({
       {
         id: "bg",
         type: "background",
-        paint: { "background-color": "#02060e" },
+        paint: { "background-color": "#07091c" },
       },
     ],
   },
@@ -1624,6 +1818,8 @@ const map = new maplibregl.Map({
   attributionControl: true,
   renderWorldCopies: false,
   fadeDuration: 200,
+  // 形态过渡要抓一帧画布盖住投影硬切
+  preserveDrawingBuffer: true,
   maxTileCacheSize: 120,
   // 静态底图（Esri/OpenTopoMap）不刷新过期瓦片，避免视野回到已加载区域时重复请求
   refreshExpiredTiles: false,
@@ -1643,9 +1839,15 @@ function placeLabelTextField() {
 
 /** 切换地图地名语言（与 UI 语言一致） */
 function applyPlaceLabelLang() {
-  if (!mapReady) return;
+  if (!map) return;
   const field = placeLabelTextField();
-  for (const id of ["label-continent", "label-ocean", "label-country", "label-city"]) {
+  for (const id of [
+    "label-continent",
+    "label-ocean",
+    "label-country",
+    "label-city",
+    "label-cn-city",
+  ]) {
     if (!map.getLayer(id)) continue;
     try {
       map.setLayoutProperty(id, "text-field", field);
@@ -1653,15 +1855,78 @@ function applyPlaceLabelLang() {
       console.warn("place label lang", id, err);
     }
   }
-  // 英文界面可略提高 Esri 英文栅格辅助；中文界面保持极淡避免叠字
+  // 中文界面关掉英文栅格注记，改用地图矢量中文城市名
   if (map.getLayer("surface-labels")) {
     try {
       map.setPaintProperty(
         "surface-labels",
         "raster-opacity",
-        uiLang === "en" ? 0.28 : 0.08,
+        uiLang === "en" ? 0.22 : 0,
       );
     } catch (_) {}
+  }
+}
+
+function ensureGazetteerCityLabels() {
+  if (!map) return;
+  const data = getCityLabelCollection();
+  if (map.getSource("city-labels")) {
+    map.getSource("city-labels").setData(data);
+  } else {
+    map.addSource("city-labels", { type: "geojson", data });
+  }
+  const halo = {
+    "text-halo-color": "rgba(2, 8, 18, 0.9)",
+    "text-halo-width": 1.35,
+    "text-halo-blur": 0.35,
+  };
+  if (!map.getLayer("label-cn-city-dot")) {
+    map.addLayer({
+      id: "label-cn-city-dot",
+      type: "circle",
+      source: "city-labels",
+      minzoom: 4.2,
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 4.5, 2, 8, 3.2, 12, 4],
+        "circle-color": "rgba(255, 248, 230, 0.95)",
+        "circle-stroke-color": "rgba(2, 8, 18, 0.75)",
+        "circle-stroke-width": 1,
+        "circle-opacity": 0.92,
+      },
+    });
+  }
+  if (!map.getLayer("label-cn-city")) {
+    map.addLayer({
+      id: "label-cn-city",
+      type: "symbol",
+      source: "city-labels",
+      minzoom: 4.2,
+      layout: {
+        "text-field": placeLabelTextField(),
+        "text-font": ["Noto Sans Regular"],
+        "text-size": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          4.4,
+          ["case", ["==", ["get", "rank"], 1], 11, 10],
+          6.5,
+          ["case", ["==", ["get", "rank"], 1], 13, 11.5],
+          10,
+          15,
+        ],
+        "text-anchor": "top",
+        "text-offset": [0, 0.45],
+        "text-padding": 2,
+        "text-allow-overlap": false,
+        "symbol-sort-key": ["coalesce", ["get", "rank"], 9],
+      },
+      paint: {
+        "text-color": "#fff6e4",
+        "text-opacity": 0.96,
+        ...halo,
+      },
+    });
   }
 }
 
@@ -1686,6 +1951,23 @@ async function addBilingualPlaceLabels() {
           ISO3_EN[String(p.iso3).toUpperCase()] = p.name_en;
         }
       }
+      registerExtraPlaces(
+        (fc.features || [])
+          .filter((f) => f.properties && f.properties.kind === "city" && f.geometry)
+          .map((f) => {
+            const p = f.properties || {};
+            const [lon, lat] = f.geometry.coordinates || [];
+            return {
+              label: p.name_zh || p.name_en,
+              names: [p.name_zh, p.name_en, p.name_zh ? `${p.name_zh}市` : ""].filter(Boolean),
+              lon,
+              lat,
+              radiusKm: 60,
+            };
+          }),
+      );
+      if (lastFeatures.length) applyFeatures(lastFeatures);
+      ensureGazetteerCityLabels();
     } catch (_) {}
   }
 
@@ -1866,6 +2148,7 @@ async function addBilingualPlaceLabels() {
     );
   }
 
+  ensureGazetteerCityLabels();
   applyPlaceLabelLang();
 }
 
@@ -1892,7 +2175,14 @@ function applyUiLang(lang, opts = {}) {
     const val = UI_I18N[uiLang][key];
     if (val != null) el.title = val;
   });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const key = el.getAttribute("data-i18n-placeholder");
+    const val = UI_I18N[uiLang][key];
+    if (val != null) el.placeholder = val;
+  });
+  syncSearchChrome();
   updatePanelsToggleButton();
+  refreshDockTitles();
 
   // 语言按钮态
   document.querySelectorAll("[data-lang]").forEach((b) => {
@@ -2141,7 +2431,7 @@ map.on("load", async () => {
       "line-dasharray": [2, 1],
     },
   });
-  // 洪水/干旱方向（仅放大 zoom>=5.5 或聚焦预览时显示）
+  // 洪水方向：仅高 zoom 或聚焦；细、淡，避免县市预警挤成一团
   map.addLayer({
     id: "fx-flood-dir",
     type: "line",
@@ -2151,14 +2441,34 @@ map.on("load", async () => {
       ["==", ["get", "effect"], "flood_dir"],
       [
         "any",
-        [">=", ["zoom"], 5.5],
+        [">=", ["zoom"], 7.2],
         ["==", ["get", "focused"], 1],
       ],
     ],
+    layout: {
+      "line-cap": "round",
+      "line-join": "round",
+    },
     paint: {
-      "line-color": ["coalesce", ["get", "marker_color"], "#2bb0ed"],
-      "line-width": 2.2,
-      "line-opacity": 0.88,
+      "line-color": ["coalesce", ["get", "marker_color"], "#38bdf8"],
+      "line-width": [
+        "interpolate",
+        ["linear"],
+        ["zoom"],
+        7,
+        1.05,
+        10,
+        1.55,
+        13,
+        2.0,
+      ],
+      "line-opacity": [
+        "case",
+        ["==", ["get", "focused"], 1],
+        0.7,
+        0.34,
+      ],
+      "line-blur": 0.4,
     },
   });
 
@@ -2252,7 +2562,6 @@ map.on("load", async () => {
     const p = f.properties;
     const coords =
       f.geometry && f.geometry.coordinates ? f.geometry.coordinates : [e.lngLat.lng, e.lngLat.lat];
-    // 手动点选事件 → 锁定该国/就近区域，空格改为区域内按时间巡览
     const country = p.country || null;
     setTourRegionFocus(
       {
@@ -2266,10 +2575,16 @@ map.on("load", async () => {
     );
     showEventPopup(p, coords);
   };
-  map.on("click", "ev-point", openPopup);
-  map.on("click", "ev-live-core", openPopup);
-  map.on("click", "ev-live-ring", openPopup);
-  map.on("click", onMapBackgroundClick);
+  // 同一点可能同时命中 ev-point / live-core / live-ring，只处理一次
+  map.on("click", (e) => {
+    const layers = ["ev-live-core", "ev-point", "ev-live-ring"].filter((id) => map.getLayer(id));
+    const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers }) : [];
+    if (hit.length) {
+      openPopup({ features: [hit[0]], lngLat: e.lngLat });
+      return;
+    }
+    onMapBackgroundClick(e);
+  });
   ["ev-point", "ev-live-core", "ev-live-ring"].forEach((layer) => {
     map.on("mouseenter", layer, () => {
       map.getCanvas().style.cursor = "pointer";
@@ -2280,6 +2595,9 @@ map.on("load", async () => {
   });
 
   mapReady = true;
+  ensureGazetteerCityLabels();
+  applyPlaceLabelLang();
+  initCosmos();
   // dev 模式：暴露 map 实例供 B2 测量脚本触发程序化 zoom
   if (import.meta.env?.DEV) window.__crisisMap = map;
   // 默认平面 + 卫星地表
@@ -2304,6 +2622,14 @@ const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2
 const easeOutQuint = (t) => 1 - Math.pow(1 - t, 5);
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 const easeInOutQuart = (t) => (t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2);
+
+function prefersReducedMotion() {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (_) {
+    return false;
+  }
+}
 
 function easePromise(opts) {
   return new Promise((resolve) => {
@@ -2332,6 +2658,144 @@ function easePromise(opts) {
       return;
     }
     setTimeout(finish, (opts.duration || 1000) + 500);
+  });
+}
+
+function waitMs(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function mix(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function lerpLng(a, b, t) {
+  let d = b - a;
+  while (d > 180) d -= 360;
+  while (d < -180) d += 360;
+  return a + d * t;
+}
+
+function readCamera() {
+  const c = map.getCenter();
+  return {
+    lng: c.lng,
+    lat: c.lat,
+    zoom: map.getZoom(),
+    bearing: map.getBearing(),
+    pitch: map.getPitch(),
+  };
+}
+
+function writeCamera(cam) {
+  try {
+    map.jumpTo({
+      center: [cam.lng, cam.lat],
+      zoom: cam.zoom,
+      bearing: cam.bearing,
+      pitch: cam.pitch,
+    });
+  } catch (_) {}
+}
+
+function mixCamera(a, b, t) {
+  return {
+    lng: lerpLng(a.lng, b.lng, t),
+    lat: mix(a.lat, b.lat, t),
+    zoom: mix(a.zoom, b.zoom, t),
+    bearing: mix(a.bearing, b.bearing, t),
+    pitch: mix(a.pitch, b.pitch, t),
+  };
+}
+
+/** 全程 inset，避免 inset↔circle 在中点跳变 */
+function morphClip(p) {
+  const m = mix(0, 17, p);
+  const r = mix(0, 50, p);
+  return `inset(${m.toFixed(2)}% round ${r.toFixed(2)}%)`;
+}
+
+function applyStageMorph(p, veilOpacity) {
+  const stage = getMapStage();
+  const veil = getMapVeil();
+  if (stage) {
+    const clip = morphClip(p);
+    const scale = mix(1, 0.9, p);
+    stage.style.clipPath = clip;
+    stage.style.webkitClipPath = clip;
+    stage.style.transform = `scale(${scale.toFixed(4)})`;
+    stage.style.filter = `brightness(${mix(1, 0.93, p).toFixed(3)})`;
+  }
+  if (veil) veil.style.opacity = String(veilOpacity);
+}
+
+function runFrameLoop(duration, onFrame) {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / duration);
+      try {
+        onFrame(t);
+      } catch (_) {}
+      if (t < 1) requestAnimationFrame(step);
+      else resolve();
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+function waitMapRenders(n = 2, timeoutMs = 160) {
+  return new Promise((resolve) => {
+    let left = n;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try {
+        map.off("render", onRender);
+      } catch (_) {}
+      resolve();
+    };
+    const onRender = () => {
+      left -= 1;
+      if (left <= 0) finish();
+    };
+    try {
+      map.on("render", onRender);
+      map.triggerRepaint();
+    } catch (_) {
+      finish();
+      return;
+    }
+    setTimeout(finish, timeoutMs);
+  });
+}
+
+function captureMapSnap() {
+  const src = map.getCanvas();
+  const snap = document.createElement("canvas");
+  snap.className = "map-swap-snap";
+  snap.width = src.width;
+  snap.height = src.height;
+  try {
+    snap.getContext("2d").drawImage(src, 0, 0);
+  } catch (_) {}
+  let painted = false;
+  try {
+    const px = snap.getContext("2d").getImageData(snap.width >> 1, snap.height >> 1, 1, 1).data;
+    painted = px[3] > 8;
+  } catch (_) {}
+  if (!painted) return null;
+  getMapStage()?.appendChild(snap);
+  return snap;
+}
+
+function fadeEl(el, from, to, duration) {
+  if (!el) return Promise.resolve();
+  el.style.opacity = String(from);
+  return runFrameLoop(duration, (t) => {
+    const k = easeOutCubic(t);
+    el.style.opacity = String(mix(from, to, k));
   });
 }
 
@@ -2372,20 +2836,177 @@ function safeClearFog() {
 }
 
 function setGlobeFog(intensity = 1) {
-  // intensity 0~1：过渡过程中逐步加强星空/地平线；失败不抛到上层
   const i = Math.max(0, Math.min(1, intensity));
   try {
     map.setFog({
-      range: [0.8, 12],
-      color: `rgb(${Math.round(8 + 4 * i)}, ${Math.round(12 + 6 * i)}, ${Math.round(24 + 10 * i)})`,
-      "high-color": `rgb(${Math.round(30 + 25 * i)}, ${Math.round(55 + 30 * i)}, ${Math.round(100 + 45 * i)})`,
-      "space-color": "rgb(2, 4, 12)",
-      "horizon-blend": 0.04 + 0.04 * i,
-      "star-intensity": 0.15 + 0.4 * i,
+      range: [0.5, 10],
+      color: `rgb(${Math.round(10 + 8 * i)}, ${Math.round(16 + 14 * i)}, ${Math.round(36 + 22 * i)})`,
+      "high-color": `rgb(${Math.round(70 + 50 * i)}, ${Math.round(120 + 50 * i)}, ${Math.round(180 + 40 * i)})`,
+      "space-color": "rgb(6, 8, 22)",
+      "horizon-blend": 0.07 + 0.06 * i,
+      "star-intensity": 0.45 + 0.55 * i,
     });
   } catch (err) {
     console.warn("setGlobeFog", err);
   }
+}
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+let cosmosOn = false;
+let cosmosRaf = 0;
+let cosmosStars = [];
+let cosmosStatic = null;
+
+function setCosmosVisible(on) {
+  cosmosOn = !!on;
+  const stage = document.getElementById("map-stage");
+  if (stage) stage.classList.toggle("is-cosmos", cosmosOn);
+  if (cosmosOn) {
+    initCosmos();
+    if (!cosmosRaf) cosmosTick();
+  }
+}
+
+function initCosmos() {
+  const canvas = document.getElementById("map-cosmos");
+  if (!canvas) return;
+  const resize = () => {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, canvas.clientWidth);
+    const h = Math.max(1, canvas.clientHeight);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    bakeCosmos();
+  };
+  if (canvas.dataset.bound !== "1") {
+    canvas.dataset.bound = "1";
+    window.addEventListener("resize", resize);
+  }
+  resize();
+}
+
+function bakeCosmos() {
+  const canvas = document.getElementById("map-cosmos");
+  if (!canvas || canvas.width < 2) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  const rnd = mulberry32(20260814);
+  cosmosStatic = document.createElement("canvas");
+  cosmosStatic.width = w;
+  cosmosStatic.height = h;
+  const ctx = cosmosStatic.getContext("2d");
+
+  const sky = ctx.createRadialGradient(w * 0.5, h * 0.48, h * 0.08, w * 0.5, h * 0.5, h * 0.85);
+  sky.addColorStop(0, "rgba(18, 28, 58, 0.35)");
+  sky.addColorStop(0.45, "rgba(10, 14, 36, 0.55)");
+  sky.addColorStop(1, "rgba(4, 6, 18, 0.2)");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.save();
+  ctx.translate(w * 0.5, h * 0.52);
+  ctx.rotate(-0.42);
+  const band = ctx.createLinearGradient(0, -h * 0.22, 0, h * 0.22);
+  band.addColorStop(0, "rgba(40, 50, 80, 0)");
+  band.addColorStop(0.35, "rgba(150, 168, 210, 0.07)");
+  band.addColorStop(0.5, "rgba(210, 196, 168, 0.13)");
+  band.addColorStop(0.62, "rgba(120, 140, 190, 0.08)");
+  band.addColorStop(1, "rgba(40, 50, 80, 0)");
+  ctx.fillStyle = band;
+  ctx.fillRect(-w, -h * 0.28, w * 2, h * 0.56);
+  for (let i = 0; i < 90; i++) {
+    const x = (rnd() - 0.5) * w * 1.6;
+    const y = (rnd() - 0.5) * h * 0.18;
+    const r = (20 + rnd() * 90) * (w / 1400);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const warm = rnd() > 0.45;
+    g.addColorStop(0, warm ? "rgba(220, 200, 160, 0.09)" : "rgba(140, 170, 230, 0.08)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  cosmosStars = [];
+  const n = Math.round((w * h) / 1800);
+  for (let i = 0; i < n; i++) {
+    const x = rnd() * w;
+    const y = rnd() * h;
+    const dx = (x / w - 0.5) * Math.cos(-0.42) + (y / h - 0.52) * Math.sin(-0.42);
+    const onBand = Math.abs(dx) < 0.12;
+    if (onBand && rnd() > 0.35) {
+      /* denser along milky way */
+    } else if (rnd() > 0.72) {
+      continue;
+    }
+    const roll = rnd();
+    const bright = roll > 0.97 ? 0.95 : roll > 0.88 ? 0.7 : 0.28 + rnd() * 0.35;
+    const hue = rnd();
+    const color =
+      hue < 0.12
+        ? [180, 210, 255]
+        : hue > 0.88
+          ? [255, 214, 170]
+          : [230, 236, 255];
+    const star = {
+      x,
+      y,
+      r: bright > 0.85 ? 1.6 + rnd() * 1.2 : 0.5 + rnd() * 0.9,
+      a: bright,
+      tw: rnd() * Math.PI * 2,
+      color,
+      twinkle: rnd() > 0.62,
+    };
+    cosmosStars.push(star);
+    ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${bright * 0.85})`;
+    ctx.beginPath();
+    ctx.arc(x, y, star.r, 0, Math.PI * 2);
+    ctx.fill();
+    if (bright > 0.86) {
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, star.r * 6);
+      glow.addColorStop(0, `rgba(${color[0]},${color[1]},${color[2]},0.35)`);
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, star.r * 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function cosmosTick() {
+  cosmosRaf = 0;
+  const canvas = document.getElementById("map-cosmos");
+  if (!canvas || !cosmosOn || !cosmosStatic) {
+    if (cosmosOn) cosmosRaf = requestAnimationFrame(cosmosTick);
+    return;
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(cosmosStatic, 0, 0);
+  if (!prefersReducedMotion()) {
+    const t = performance.now() / 900;
+    for (const s of cosmosStars) {
+      if (!s.twinkle) continue;
+      const a = s.a * (0.55 + 0.45 * Math.sin(t + s.tw));
+      ctx.fillStyle = `rgba(${s.color[0]},${s.color[1]},${s.color[2]},${a})`;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r * 1.05, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  cosmosRaf = requestAnimationFrame(cosmosTick);
 }
 
 /** 强制进入某形态并清理 CSS/交互残留（失败恢复用） */
@@ -2399,10 +3020,12 @@ function forceMapMode(mode) {
       return false;
     }
     setGlobeFog(1);
+    setCosmosVisible(true);
     // 地球仪默认不加 terrain：globe+terrain 在部分环境会抛错导致切换失败
   } else {
     safeSetProjection("mercator");
     safeClearFog();
+    setCosmosVisible(false);
   }
   try {
     map.resize();
@@ -2446,6 +3069,14 @@ async function applyMapMode(mode, opts = {}) {
   }
   if (mapModeAnimating) return;
 
+  if (prefersReducedMotion()) {
+    const ok = forceMapMode(mode);
+    mapMode = ok ? mode : "flat";
+    syncMapModeButtons(mapMode);
+    showToast(L().mapForm, mode === "globe" ? L().mapGlobeFast : L().mapFlatFast);
+    return;
+  }
+
   mapModeAnimating = true;
   const prev = mapMode;
   syncMapModeButtons(mode); // 按钮先反馈目标态
@@ -2454,6 +3085,8 @@ async function applyMapMode(mode, opts = {}) {
     map.boxZoom.disable();
     map.dragPan.disable();
     map.scrollZoom.disable();
+    map.dragRotate.disable();
+    map.touchZoomRotate.disable();
   } catch (_) {}
 
   try {
@@ -2489,6 +3122,8 @@ async function applyMapMode(mode, opts = {}) {
       map.boxZoom.enable();
       map.dragPan.enable();
       map.scrollZoom.enable();
+      map.dragRotate.enable();
+      map.touchZoomRotate.enable();
     } catch (_) {}
     mapModeAnimating = false;
   }
@@ -2498,170 +3133,129 @@ function getMapStage() {
   return document.getElementById("map-stage");
 }
 
-function waitMs(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-const MORPH_CLASSES = [
-  "morph-roll-in",
-  "morph-roll-out",
-  "morph-unroll",
-  "morph-unroll-globe",
-  "morph-unroll-flat",
-];
-
-/** CSS 卷起 / 展开关键帧（与 styles.css 时长对齐） */
-async function stageMorph(className, durationMs) {
-  const stage = getMapStage();
-  if (!stage) {
-    await waitMs(durationMs);
-    return;
-  }
-  stage.classList.add("is-morphing");
-  MORPH_CLASSES.forEach((c) => stage.classList.remove(c));
-  // 清掉可能残留的内联 transform，保证 animation 从头播放
-  stage.style.transform = "";
-  stage.style.filter = "";
-  stage.style.opacity = "";
-  stage.style.borderRadius = "";
-  void stage.offsetWidth;
-  stage.classList.add(className);
-  await waitMs(durationMs);
+function getMapVeil() {
+  return document.getElementById("map-veil");
 }
 
 function stageResetMorph() {
   const stage = getMapStage();
-  if (!stage) return;
-  stage.classList.remove("is-morphing", ...MORPH_CLASSES);
-  stage.style.transform = "";
-  stage.style.filter = "";
-  stage.style.opacity = "";
-  stage.style.borderRadius = "";
-  stage.style.animation = "";
-}
-
-/**
- * 平面 → 地球仪：
- * 拉远 → 纸面卷起 → 切 globe + 雾 → 圆角展开成球 → 轻旋定格
- */
-async function transitionFlatToGlobe() {
-  const c = map.getCenter();
-  const z0 = map.getZoom();
-  const midLat = Math.max(-22, Math.min(22, c.lat * 0.45));
-  const midLng = c.lng;
-  const globeLat = Math.max(-10, Math.min(10, midLat * 0.4));
-
-  safeClearTerrain();
-
-  // 1) 镜头先退到适合「整张地图成纸」的视距（与卷起并行感）
-  const pullBack = easePromise({
-    center: [midLng, midLat],
-    zoom: Math.min(z0, 2.15),
-    pitch: 0,
-    bearing: map.getBearing() * 0.15,
-    duration: 780,
-    easing: easeInOutCubic,
-  });
-  // 卷起稍晚启动，形成「先松手再卷」
-  await waitMs(180);
-  const curl = stageMorph("morph-roll-in", 950);
-  await Promise.all([pullBack, curl]);
-
-  // 2) 卷到最紧：切换球体投影 + 星空雾（视觉仍是卷筒）
-  if (!safeSetProjection("globe")) {
-    throw new Error("globe projection unsupported");
+  const veil = getMapVeil();
+  if (stage) {
+    try {
+      stage.getAnimations().forEach((a) => a.cancel());
+    } catch (_) {}
+    stage.querySelectorAll(".map-swap-snap").forEach((n) => n.remove());
+    stage.classList.remove("is-morphing", "is-sphere");
+    stage.style.transform = "none";
+    stage.style.filter = "none";
+    stage.style.opacity = "";
+    stage.style.clipPath = "none";
+    stage.style.webkitClipPath = "none";
+    stage.style.animation = "";
   }
-  setGlobeFog(0.35);
-  try {
-    map.jumpTo({
-      center: [midLng, globeLat],
-      zoom: 1.48,
-      pitch: 0,
-      bearing: 0,
-    });
-    map.resize();
-  } catch (_) {}
-
-  // 3) 展开：圆角筒 → 球 → 铺满，同时雾变浓、球轻旋
-  setGlobeFog(0.7);
-  const unroll = stageMorph("morph-unroll-globe", 1150);
-  const spin = easePromise({
-    center: [midLng, globeLat * 0.6],
-    zoom: 1.32,
-    pitch: 0,
-    bearing: 22,
-    duration: 1200,
-    easing: easeOutQuint,
-  });
-  await Promise.all([unroll, spin]);
-  setGlobeFog(1);
-
-  stageResetMorph();
-  try {
-    map.resize();
-  } catch (_) {}
+  if (veil) {
+    try {
+      veil.getAnimations().forEach((a) => a.cancel());
+    } catch (_) {}
+    veil.style.opacity = "";
+  }
 }
 
 /**
- * 地球仪 → 平面：
- * 收束成圆 → 卷起 → 切 mercator → 铺平展开 → 飞到目标视距
+ * 收束 → 快照盖住投影硬切 → 展开。镜头全程 jumpTo 插值，中间不停 easeTo。
  */
+async function playMorphTransition({ projection, midCam, endCam, fogTo }) {
+  const stage = getMapStage();
+  if (stage) stage.classList.add("is-morphing");
+  try {
+    map.stop();
+  } catch (_) {}
+
+  const startCam = readCamera();
+  const peak = 0.7;
+
+  await runFrameLoop(1020, (t) => {
+    const u = easeInOutCubic(t);
+    writeCamera(mixCamera(startCam, midCam, u));
+    applyStageMorph(u * peak, mix(0, 0.16, u));
+  });
+
+  const snap = captureMapSnap();
+  if (projection === "globe") {
+    if (!safeSetProjection("globe")) throw new Error("globe projection unsupported");
+    setGlobeFog(0.4);
+    setCosmosVisible(true);
+  } else {
+    safeClearTerrain();
+    safeClearFog();
+    if (!safeSetProjection("mercator")) throw new Error("mercator projection failed");
+    setCosmosVisible(false);
+  }
+  writeCamera(midCam);
+  await waitMapRenders(2, 120);
+  const fadeSnap = snap ? fadeEl(snap, 1, 0, 420).then(() => snap.remove()) : Promise.resolve();
+
+  let fogTick = 0;
+  await runFrameLoop(1380, (t) => {
+    const v = easeOutCubic(t);
+    writeCamera(mixCamera(midCam, endCam, v));
+    applyStageMorph(peak * (1 - v), mix(0.16, 0, v));
+    fogTick += 1;
+    if (projection === "globe" && fogTick % 3 === 0) setGlobeFog(mix(0.4, fogTo ?? 1, v));
+  });
+
+  if (projection === "globe") setGlobeFog(fogTo ?? 1);
+  applyStageMorph(0, 0);
+  await fadeSnap;
+  if (snap?.parentNode) snap.remove();
+}
+
+async function transitionFlatToGlobe() {
+  const start = readCamera();
+  const midLat = Math.max(-14, Math.min(14, start.lat * 0.4));
+  const globeLat = Math.max(-6, Math.min(6, midLat * 0.45));
+  safeClearTerrain();
+  await playMorphTransition({
+    projection: "globe",
+    midCam: {
+      lng: start.lng,
+      lat: midLat,
+      zoom: Math.min(Math.max(start.zoom, 1.25), 1.55),
+      bearing: start.bearing * 0.25,
+      pitch: 0,
+    },
+    endCam: {
+      lng: start.lng,
+      lat: globeLat,
+      zoom: 1.32,
+      bearing: start.bearing * 0.12 + 14,
+      pitch: 0,
+    },
+    fogTo: 1,
+  });
+}
+
 async function transitionGlobeToFlat() {
-  const c = map.getCenter();
+  const start = readCamera();
   const targetCenter = currentView === "local" ? LOCAL_CENTER : [20, 25];
   const targetZoom = currentView === "local" ? 3.5 : 1.7;
-
-  // 1) 球体先回正、略放大，准备「收成纸筒」
-  await easePromise({
-    center: [
-      c.lng * 0.55 + targetCenter[0] * 0.45,
-      Math.max(-35, Math.min(45, c.lat * 0.55 + targetCenter[1] * 0.45)),
-    ],
-    zoom: Math.min(Math.max(map.getZoom(), 1.55), 2.4),
-    pitch: 0,
-    bearing: 0,
-    duration: 720,
-    easing: easeInOutQuart,
-  });
-
-  // 2) 卷起球体
-  await stageMorph("morph-roll-out", 900);
-
-  // 3) 最紧时切回平面投影
-  safeClearTerrain();
-  safeClearFog();
-  if (!safeSetProjection("mercator")) {
-    throw new Error("mercator projection failed");
-  }
-  try {
-    map.jumpTo({
-      center: [
-        c.lng * 0.3 + targetCenter[0] * 0.7,
-        c.lat * 0.3 + targetCenter[1] * 0.7,
-      ],
-      zoom: Math.max(1.9, targetZoom - 0.15),
+  await playMorphTransition({
+    projection: "mercator",
+    midCam: {
+      lng: lerpLng(start.lng, targetCenter[0], 0.45),
+      lat: mix(start.lat, targetCenter[1], 0.45),
+      zoom: Math.min(Math.max(start.zoom, 1.28), 1.6),
+      bearing: start.bearing * 0.2,
       pitch: 0,
+    },
+    endCam: {
+      lng: targetCenter[0],
+      lat: targetCenter[1],
+      zoom: targetZoom,
       bearing: 0,
-    });
-    map.resize();
-  } catch (_) {}
-
-  // 4) 铺平展开 + 飞到最终总览
-  const unroll = stageMorph("morph-unroll-flat", 1050);
-  const settle = easePromise({
-    center: targetCenter,
-    zoom: targetZoom,
-    pitch: 0,
-    bearing: 0,
-    duration: 1100,
-    easing: easeOutCubic,
+      pitch: 0,
+    },
   });
-  await Promise.all([unroll, settle]);
-
-  stageResetMorph();
-  try {
-    map.resize();
-  } catch (_) {}
 }
 
 /** 卫星影像 / 地形地貌 地表切换 */
@@ -2872,11 +3466,137 @@ function renderHealth(h) {
   }
 }
 
-function applyFeatures(all) {
+function searchRecordOf(f) {
+  const p = (f && f.properties) || {};
+  const iso = String(p.country || "").toUpperCase();
+  const typeZh = ZH.types[p.type] || "";
+  const typeEn = EN.types[p.type] || "";
+  const catZh = ZH.cats[p.category] || "";
+  const catEn = EN.cats[p.category] || "";
+  const srcZh = ZH.sources[p.source] || "";
+  const srcEn = EN.sources[p.source] || "";
+  const ctryZh = ISO3_ZH[iso] || "";
+  const ctryEn = ISO3_EN[iso] || "";
+  const live = Number(p.is_live) === 1 || isLiveEvent(p);
+  const headline = eventHeadline(p);
+  const blob = [
+    headline,
+    p.headline,
+    p.type,
+    typeZh,
+    typeEn,
+    iso,
+    ctryZh,
+    ctryEn,
+    p.source,
+    srcZh,
+    srcEn,
+    p.category,
+    catZh,
+    catEn,
+    p.magnitude,
+    p.unit,
+    p.status,
+    live ? "live 进行中 实时" : "",
+  ]
+    .filter((x) => x != null && x !== "")
+    .join("\n")
+    .toLowerCase();
+  const coords = (f && f.geometry && f.geometry.coordinates) || [];
+  const lon = Number(coords[0]);
+  const lat = Number(coords[1]);
+  const place = placesAt(lon, lat);
+  const placeText = place.keywords || "";
+  return {
+    blob: [blob, placeText].filter(Boolean).join("\n").toLowerCase(),
+    type: `${p.type || ""} ${typeZh} ${typeEn}`.toLowerCase(),
+    country: `${iso} ${ctryZh} ${ctryEn} ${placeText}`.toLowerCase(),
+    source: `${p.source || ""} ${srcZh} ${srcEn}`.toLowerCase(),
+    cat: `${p.category || ""} ${catZh} ${catEn}`.toLowerCase(),
+    headline: `${headline} ${p.headline || ""}`.toLowerCase(),
+    mag: Number(p.magnitude),
+    sev: Number(p.severity),
+    lon,
+    lat,
+  };
+}
+
+function recognizedSearchPlace() {
+  if (!searchParsed) return null;
+  for (const group of searchParsed) {
+    const values = [];
+    for (const term of group) {
+      if (term.negate) continue;
+      if (term.field && term.field !== "country") continue;
+      values.push(term.value);
+    }
+    const place = resolvePlaceFromValues(values);
+    if (place) return place;
+  }
+  return null;
+}
+
+function maybeFocusSearchPlace() {
+  const place = recognizedSearchPlace();
+  if (!place || !mapReady || !map) return;
+  const b = placeBounds(place);
+  if (!b) return;
+  const [w, s, e, n] = b;
+  try {
+    map.fitBounds(
+      [
+        [w, s],
+        [e, n],
+      ],
+      { padding: 56, maxZoom: 7.4, duration: 900 },
+    );
+  } catch {
+    /* fitBounds 在投影切换中可能失败 */
+  }
+}
+
+function syncSearchChrome(hitCount, poolCount) {
+  const input = document.getElementById("eventSearch");
+  const clear = document.getElementById("searchClear");
+  const meta = document.getElementById("searchMeta");
+  const active = Boolean(searchParsed);
+  if (clear) clear.hidden = !String(searchRaw || "").trim();
+  if (meta) {
+    if (active && Number.isFinite(hitCount) && Number.isFinite(poolCount)) {
+      const pack = UI_I18N[uiLang] || UI_I18N.zh;
+      meta.hidden = false;
+      const place = recognizedSearchPlace();
+      if (place && hitCount === 0) {
+        meta.textContent = `${place.label} · ${pack.searchLocated || "已定位"} · ${pack.searchNoEvent || "无事件"}`;
+      } else if (place) {
+        meta.textContent = `${place.label} · ${hitCount}${uiLang === "en" ? "" : " 条"}`;
+      } else {
+        meta.textContent = `${pack.searchHits || "命中"} ${hitCount}/${poolCount}`;
+      }
+    } else {
+      meta.hidden = true;
+      meta.textContent = "";
+    }
+  }
+  const miss = active && hitCount === 0 && !recognizedSearchPlace();
+  if (input) input.setAttribute("aria-invalid", miss ? "true" : "false");
+}
+
+function setSearchQuery(raw, { apply = true } = {}) {
+  searchRaw = String(raw || "");
+  searchParsed = parseSearchQuery(searchRaw);
+  if (apply && lastFeatures.length) applyFeatures(lastFeatures);
+  else syncSearchChrome();
+  if (searchParsed) maybeFocusSearchPlace();
+}
+
+function applyFeatures(allRaw) {
+  const all = (allRaw || []).map(normalizeEventFeature);
   const wantN = document.getElementById("f-natural")?.checked !== false;
   const wantC = document.getElementById("f-conflict")?.checked !== false;
+  const notable = all.filter((f) => !isMinorCmaAlert(f.properties || {}));
 
-  let feats = all.filter((f) => {
+  let feats = notable.filter((f) => {
     const p = f.properties || {};
     const c = p.category;
     const t = p.type;
@@ -2887,6 +3607,11 @@ function applyFeatures(all) {
     if (!isTypeEnabled(t)) return false;
     return true;
   });
+  const afterLayer = feats.length;
+  if (searchParsed) {
+    feats = feats.filter((f) => matchSearchRecord(searchRecordOf(f), searchParsed));
+  }
+  syncSearchChrome(feats.length, afterLayer);
 
   // 右侧面板与巡览默认：一律按发生时间新→旧
   feats = [...feats].sort(byTimeDesc);
@@ -2901,20 +3626,20 @@ function applyFeatures(all) {
     });
   }
 
-  const nNat = all.filter((f) => f.properties.category === "natural").length;
-  const nCon = all.filter((f) => f.properties.category === "conflict").length;
-  const nHi = all.filter((f) => Number(f.properties.severity) >= 0.7).length;
-  document.getElementById("st-total").textContent = all.length;
+  const nNat = notable.filter((f) => f.properties.category === "natural").length;
+  const nCon = notable.filter((f) => f.properties.category === "conflict").length;
+  const nHi = notable.filter((f) => Number(f.properties.severity) >= 0.7).length;
+  document.getElementById("st-total").textContent = notable.length;
   document.getElementById("st-nat").textContent = nNat;
   document.getElementById("st-con").textContent = nCon;
   document.getElementById("st-hi").textContent = nHi;
   document.getElementById("cnt-nat").textContent = nNat;
   document.getElementById("cnt-con").textContent = nCon;
 
-  // 各类型数量角标（全量，便于对照筛选）
+  // 各类型数量角标（不含蓝/黄日常预警）
   const typeCounts = {};
   for (const it of FILTERABLE_TYPES) typeCounts[it.type] = 0;
-  for (const f of all) {
+  for (const f of notable) {
     const t = f.properties && f.properties.type;
     if (t && typeCounts[t] != null) typeCounts[t] += 1;
   }
@@ -3002,8 +3727,15 @@ function buildPopupHtml(p) {
   const grade = realGrade(p);
   const typeC = typeTextColor(p);
   const brief = buildBrief(p);
-  const mag =
-    p.magnitude != null && p.magnitude !== "null" ? `${p.magnitude} ${unitLabel(p.unit)}` : "—";
+  const mag = (() => {
+    if (isCmaAlert(p) || p.unit === "alert") {
+      const lv = cmaSignalLevel(p);
+      return lv ? `${lv}色预警` : "—";
+    }
+    return p.magnitude != null && p.magnitude !== "null"
+      ? `${p.magnitude} ${unitLabel(p.unit)}`
+      : "—";
+  })();
   const met = parseMetrics(p);
   const depth = met.depth_km != null ? `${fmtNum(met.depth_km)} km` : "—";
   const lon = Number(p._lon ?? 0);
@@ -3023,11 +3755,16 @@ function buildPopupHtml(p) {
         <dt>当前位置</dt><dd>${escapeHtml(fmtCoord(lat, lon))}</dd>
         <dt>路径点</dt><dd>${n >= 2 ? `${n} 个（地图已标轨迹）` : "不足，仅当前位置"}</dd>
         <dt>发生/更新</dt><dd>${fmtTime(p.occurred_at)}</dd>`;
+  } else if (p.type === "rainstorm" || isCmaAlert(p)) {
+    const lv = parseMetrics(p).cma_level;
+    extraRows = `
+        <dt>预警类型</dt><dd>${escapeHtml(typeLabel(p.type))}</dd>
+        <dt>信号等级</dt><dd>${escapeHtml(lv ? `${lv}色` : "—")}</dd>
+        <dt>发布位置</dt><dd>${escapeHtml(fmtCoord(lat, lon))}</dd>
+        <dt>发布时间</dt><dd>${fmtTime(p.occurred_at)}</dd>`;
   } else if (p.type === "flood" || p.type === "landslide" || p.type === "debris_flow") {
-    const brg = floodBearingDeg(p);
     extraRows = `
         <dt>监测点</dt><dd>${escapeHtml(fmtCoord(lat, lon))}</dd>
-        <dt>示意流向</dt><dd>方位角约 ${brg}°（放大或预览后可见箭头）</dd>
         <dt>发生/更新</dt><dd>${fmtTime(p.occurred_at)}</dd>`;
   } else if (p.type === "war" || p.type === "crisis_signal" || p.type === "armed_clash") {
     extraRows = `
@@ -3071,21 +3808,80 @@ function closeTourPopup() {
   document.querySelectorAll(".maplibregl-popup").forEach((el) => el.remove());
 }
 
+function popupChromePad() {
+  const bar = document.querySelector(".topbar");
+  const top = bar ? Math.ceil(bar.getBoundingClientRect().bottom) + 10 : 88;
+  const extra = visibleShellInsets();
+  return {
+    top: Math.max(top, extra.top || 0),
+    right: extra.right,
+    bottom: extra.bottom,
+    left: extra.left,
+  };
+}
+
+function pickPopupAnchor(lngLat) {
+  const pt = map.project(lngLat);
+  const pad = popupChromePad();
+  const above = pt.y - pad.top;
+  const below = window.innerHeight - pad.bottom - pt.y;
+  const left = pt.x - pad.left;
+  const right = window.innerWidth - pad.right - pt.x;
+  if (above < 260 && below >= above) {
+    if (left < 170) return "top-left";
+    if (right < 170) return "top-right";
+    return "top";
+  }
+  if (left < 160 && right > left) return "left";
+  if (right < 160) return "right";
+  return "bottom";
+}
+
+function clampPopupToViewport(popup) {
+  const root = popup && popup.getElement && popup.getElement();
+  if (!root) return;
+  const box = root.querySelector(".maplibregl-popup-content") || root;
+  box.style.transform = "";
+  const pad = popupChromePad();
+  const r = root.getBoundingClientRect();
+  let dx = 0;
+  let dy = 0;
+  if (r.top < pad.top) dy += pad.top - r.top;
+  if (r.bottom > window.innerHeight - pad.bottom) dy -= r.bottom - (window.innerHeight - pad.bottom);
+  if (r.left < pad.left) dx += pad.left - r.left;
+  if (r.right > window.innerWidth - pad.right) dx -= r.right - (window.innerWidth - pad.right);
+  if (dx || dy) box.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+
+function attachPopupClamp(popup) {
+  const run = () => clampPopupToViewport(popup);
+  requestAnimationFrame(run);
+  map.on("move", run);
+  window.addEventListener("resize", run);
+  popup.on("close", () => {
+    map.off("move", run);
+    window.removeEventListener("resize", run);
+  });
+}
+
 function showEventPopup(p, lngLat) {
   const lon = Array.isArray(lngLat) ? lngLat[0] : lngLat.lng;
   const lat = Array.isArray(lngLat) ? lngLat[1] : lngLat.lat;
   const props = { ...p, _lon: lon, _lat: lat };
   closeTourPopup();
+  const maxW = Math.max(240, Math.min(380, window.innerWidth - 32));
   tourPopup = new maplibregl.Popup({
     closeButton: true,
-    maxWidth: "360px",
-    offset: 16,
-    anchor: "bottom",
+    className: "crisis-popup",
+    maxWidth: `${maxW}px`,
+    offset: 18,
+    anchor: pickPopupAnchor([lon, lat]),
     focusAfterOpen: false,
   })
     .setLngLat([lon, lat])
     .setHTML(buildPopupHtml(props))
     .addTo(map);
+  attachPopupClamp(tourPopup);
   tourPopup.on("close", () => {
     if (_eqWaveTimer) {
       cancelAnimationFrame(_eqWaveTimer);
@@ -3258,7 +4054,13 @@ function renderFeed(feats, liveCount) {
   document.getElementById("feedCount").textContent =
     `${L().items(feats.length)}${scopeHint}${liveHint}`;
   if (!feats.length) {
-    box.innerHTML = `<div class="empty">${escapeHtml(L().emptyEvents)}</div>`;
+    const place = searchParsed ? recognizedSearchPlace() : null;
+    const emptyText = place
+      ? L().placeEmpty(place.label)
+      : searchParsed
+        ? L().emptySearch
+        : L().emptyEvents;
+    box.innerHTML = `<div class="empty">${escapeHtml(emptyText)}</div>`;
     return;
   }
   // 时间新→旧（tourList 已排序）
@@ -3564,8 +4366,25 @@ window.addEventListener(
       tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target.isContentEditable;
 
     if (e.code === "Escape" || e.key === "Escape") {
+      const searchEl = document.getElementById("eventSearch");
+      if (searchEl && document.activeElement === searchEl && String(searchRaw || "").trim()) {
+        e.preventDefault();
+        searchEl.value = "";
+        setSearchQuery("");
+        return;
+      }
       e.preventDefault();
       exitTourMode();
+      return;
+    }
+
+    if (!typing && (e.key === "/" || e.code === "Slash") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const searchEl = document.getElementById("eventSearch");
+      if (searchEl) {
+        e.preventDefault();
+        searchEl.focus();
+        searchEl.select();
+      }
       return;
     }
 
@@ -3595,6 +4414,37 @@ document.querySelectorAll("[data-lang]").forEach((btn) => {
 // 先恢复面板折叠态，再套语言（会刷新按钮文案）
 setPanelsCollapsed(panelsCollapsed, { persist: false });
 applyUiLang(uiLang, { toast: false });
+{
+  const form = document.getElementById("searchForm");
+  const input = document.getElementById("eventSearch");
+  const clear = document.getElementById("searchClear");
+  let searchTimer = 0;
+  if (form) {
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (input) setSearchQuery(input.value);
+    });
+  }
+  if (input) {
+    input.addEventListener("input", () => {
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(() => setSearchQuery(input.value), 120);
+    });
+  }
+  if (clear) {
+    clear.addEventListener("click", () => {
+      if (input) input.value = "";
+      setSearchQuery("");
+      if (input) input.focus();
+    });
+  }
+}
+initDockablePanels({
+  getTitle(key, fallback) {
+    const pack = UI_I18N[uiLang] || UI_I18N.zh;
+    return pack[key] || (uiLang === "en" ? fallback.en : fallback.zh);
+  },
+});
 
 async function loadHealth() {
   try {
@@ -3607,8 +4457,18 @@ async function loadHealth() {
   }
 }
 
+let lastToastKey = "";
+let lastToastAt = 0;
+
 function showToast(title, text) {
   const host = document.getElementById("toasts");
+  if (!host) return;
+  const key = `${title}\n${text}`;
+  const now = Date.now();
+  if (key === lastToastKey && now - lastToastAt < 2800) return;
+  lastToastKey = key;
+  lastToastAt = now;
+  while (host.children.length >= 2) host.firstElementChild.remove();
   const el = document.createElement("div");
   el.className = "toast";
   el.innerHTML = `<div class="th">${escapeHtml(title)}</div><div class="tb">${escapeHtml(text)}</div>`;

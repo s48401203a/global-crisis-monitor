@@ -41,24 +41,37 @@ body {
   perspective: 1600px;
 }
 
-/* 地图舞台：平面 ⇄ 地球仪 卷起/展开（中等 3D，失败由 JS 必清） */
+/* 地图舞台：平面 ⇄ 地球仪 收成球再展开（投影硬切藏在圆形最小帧） */
 .map-stage {
   position: absolute;
   inset: 0;
   z-index: 1;
-  transform-origin: 50% 58%;
-  transform-style: preserve-3d;
-  will-change: transform, filter, opacity, border-radius, clip-path;
+  transform-origin: 50% 50%;
+  will-change: transform, filter, clip-path;
   transform: none;
   filter: none;
   opacity: 1;
-  border-radius: 0;
   overflow: hidden;
-  backface-visibility: hidden;
+  background: #050714;
+}
+.map-stage #map-cosmos {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.85s ease;
+  mix-blend-mode: screen;
+}
+.map-stage.is-cosmos #map-cosmos {
+  opacity: 1;
 }
 .map-stage #map {
   position: absolute;
   inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
 }
@@ -68,144 +81,25 @@ body {
   z-index: 2;
   pointer-events: none;
   opacity: 0;
-  /* 卷筒感：上下暗、中亮 + 边缘 vignette */
   background:
-    linear-gradient(
-      180deg,
-      rgba(2, 6, 14, 0.55) 0%,
-      rgba(2, 6, 14, 0.08) 28%,
-      rgba(2, 6, 14, 0.02) 50%,
-      rgba(2, 6, 14, 0.12) 72%,
-      rgba(2, 6, 14, 0.62) 100%
-    ),
-    radial-gradient(ellipse 85% 75% at 50% 48%, transparent 35%, rgba(2, 6, 14, 0.5) 100%);
-  transition: opacity 0.35s ease;
-  mix-blend-mode: multiply;
+    radial-gradient(circle at 50% 46%, transparent 42%, rgba(2, 6, 14, 0.28) 78%, rgba(2, 6, 14, 0.55) 100%);
 }
-.map-stage.is-morphing .map-veil {
-  opacity: 1;
-}
-/* 卷起高光条（模拟纸张柱面反光） */
-.map-stage.is-morphing .map-veil::after {
-  content: "";
+.map-swap-snap {
   position: absolute;
-  left: 8%;
-  right: 8%;
-  top: 42%;
-  height: 16%;
-  border-radius: 50%;
-  background: linear-gradient(
-    180deg,
-    transparent,
-    rgba(180, 220, 255, 0.12),
-    transparent
-  );
-  filter: blur(8px);
-  opacity: 0.85;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
+  object-fit: cover;
 }
 
-/* —— 平面 → 球：卷起成筒 —— */
-@keyframes morphCurlUp {
-  0% {
-    transform: perspective(1800px) rotateX(0deg) scale(1) translateY(0);
-    filter: brightness(1) saturate(1) contrast(1);
-    border-radius: 0;
-    opacity: 1;
+@media (prefers-reduced-motion: reduce) {
+  .map-stage,
+  .map-veil {
+    animation: none !important;
+    transition: none !important;
   }
-  45% {
-    transform: perspective(1800px) rotateX(16deg) scale(0.94) translateY(2.5%);
-    filter: brightness(0.9) saturate(1.05) contrast(1.02);
-    border-radius: 12px;
-  }
-  100% {
-    transform: perspective(1800px) rotateX(32deg) scale(0.72) translateY(7%);
-    filter: brightness(0.68) saturate(1.08) contrast(1.06);
-    border-radius: 28px;
-    opacity: 0.96;
-  }
-}
-
-/* —— 球态展开：由圆角筒 → 悬浮球 → 铺满 —— */
-@keyframes morphUnrollGlobe {
-  0% {
-    transform: perspective(1800px) rotateX(32deg) scale(0.7) translateY(6%);
-    filter: brightness(0.7) saturate(1.05);
-    border-radius: 48%;
-    opacity: 0.95;
-  }
-  35% {
-    transform: perspective(1600px) rotateX(10deg) scale(0.82) translateY(2%);
-    filter: brightness(0.88) saturate(1.08);
-    border-radius: 50%;
-  }
-  70% {
-    transform: perspective(1400px) rotateX(2deg) scale(0.94) translateY(0);
-    filter: brightness(0.98) saturate(1.04);
-    border-radius: 42%;
-  }
-  100% {
-    transform: perspective(1400px) rotateX(0deg) scale(1) translateY(0);
-    filter: brightness(1) saturate(1);
-    border-radius: 0;
-    opacity: 1;
-  }
-}
-
-/* —— 球 → 平面：先收成圆筒再卷 —— */
-@keyframes morphCurlSphere {
-  0% {
-    transform: perspective(1600px) rotateX(0deg) scale(1);
-    filter: brightness(1);
-    border-radius: 0;
-  }
-  40% {
-    transform: perspective(1600px) rotateX(12deg) scale(0.88);
-    filter: brightness(0.88);
-    border-radius: 46%;
-  }
-  100% {
-    transform: perspective(1800px) rotateX(30deg) scale(0.74) translateY(5%);
-    filter: brightness(0.7) saturate(1.06);
-    border-radius: 24px;
-  }
-}
-
-/* —— 平面展开铺开 —— */
-@keyframes morphUnrollFlat {
-  0% {
-    transform: perspective(1800px) rotateX(30deg) scale(0.74) translateY(5%);
-    filter: brightness(0.72);
-    border-radius: 22px;
-  }
-  55% {
-    transform: perspective(1600px) rotateX(8deg) scale(0.94) translateY(1%);
-    filter: brightness(0.94);
-    border-radius: 10px;
-  }
-  100% {
-    transform: perspective(1400px) rotateX(0deg) scale(1) translateY(0);
-    filter: brightness(1) saturate(1);
-    border-radius: 0;
-  }
-}
-
-.map-stage.morph-roll-in {
-  animation: morphCurlUp 0.95s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
-}
-.map-stage.morph-unroll-globe {
-  animation: morphUnrollGlobe 1.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-.map-stage.morph-roll-out {
-  animation: morphCurlSphere 0.9s cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
-}
-.map-stage.morph-unroll-flat {
-  animation: morphUnrollFlat 1.05s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-/* 兼容旧类名：当作轻量收束 */
-.map-stage.morph-unroll {
-  animation: morphUnrollFlat 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* ambient mesh */
@@ -232,6 +126,10 @@ body::before {
   }
 }
 
+.maplibregl-popup {
+  z-index: 18 !important;
+  max-width: min(380px, calc(100vw - 28px)) !important;
+}
 .maplibregl-popup-content {
   background: #0f1622 !important;
   color: var(--text) !important;
@@ -240,6 +138,10 @@ body::before {
   box-shadow: var(--shadow) !important;
   padding: 0 !important;
   font-family: var(--font) !important;
+  max-height: min(56vh, calc(100vh - 148px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .maplibregl-popup-tip {
   border-top-color: #0f1622 !important;
@@ -274,9 +176,10 @@ body::before {
   transform: translateX(-50%) translateY(-12px);
   z-index: 20;
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
   padding: 8px 12px 8px 14px;
   max-width: calc(100vw - 20px);
   box-sizing: border-box;
@@ -484,6 +387,74 @@ body::before {
   font-size: 14px;
   line-height: 1;
 }
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 260px;
+  min-width: 200px;
+  max-width: 460px;
+  height: 30px;
+  padding: 0 8px 0 10px;
+  border: 1px solid rgba(78, 201, 212, 0.28);
+  border-radius: 999px;
+  background: rgba(7, 38, 54, 0.55);
+  box-sizing: border-box;
+}
+.search-box:focus-within {
+  border-color: rgba(78, 201, 212, 0.7);
+  background: rgba(7, 38, 54, 0.78);
+}
+.search-ico {
+  flex: 0 0 auto;
+  color: var(--cyan);
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.85;
+}
+.search-box input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  line-height: 1.2;
+}
+.search-box input::placeholder {
+  color: var(--dim);
+}
+.search-box input[type="search"]::-webkit-search-decoration,
+.search-box input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.search-meta {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--cyan);
+  white-space: nowrap;
+}
+.search-clear {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.search-clear:hover {
+  color: var(--text);
+  background: rgba(224, 106, 106, 0.28);
+}
 .clock {
   font-family: var(--mono);
   font-size: 11.5px;
@@ -541,7 +512,8 @@ body::before {
   top: 84px;
   left: 50%;
   transform: translateX(-50%) translateY(16px);
-  width: min(720px, calc(100vw - 700px));
+  width: min(720px, calc(100vw - 40px));
+  max-width: calc(100vw - 40px);
   animation-delay: 0.2s;
 }
 @keyframes rise {
@@ -593,6 +565,197 @@ body::before {
   padding-top: 8px;
   scrollbar-width: thin;
   scrollbar-color: rgba(120, 160, 220, 0.25) transparent;
+}
+
+/* 拖动 / 贴边收起为名称签 */
+.shell.is-ready:not(.is-free):not(.is-collapsed):not(.is-dragging) {
+  animation: none;
+  opacity: 1;
+}
+.shell.stats.is-ready:not(.is-free):not(.is-collapsed):not(.is-dragging) {
+  transform: translateX(-50%);
+}
+.shell.is-free,
+.shell.is-collapsed,
+.shell.is-dragging {
+  animation: none;
+  opacity: 1;
+  transform: none !important;
+  right: auto;
+  bottom: auto;
+  max-height: none;
+}
+.shell.is-dragging {
+  z-index: 36;
+  transition: none;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(78, 201, 212, 0.35);
+}
+.dock-handle {
+  position: relative;
+  z-index: 2;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.dock-handle:active,
+.dock-grip:active {
+  cursor: grabbing;
+}
+.shell.stats .panel {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+.shell.stats .stats-grid {
+  flex: 1;
+  min-width: 0;
+}
+.dock-grip {
+  flex: 0 0 18px;
+  width: 18px;
+  cursor: grab;
+  touch-action: none;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  align-self: stretch;
+}
+.dock-grip::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  background-image: radial-gradient(circle, var(--dim) 1.15px, transparent 1.25px);
+  background-size: 6px 5.5px;
+  background-repeat: repeat-y;
+  background-position: center;
+  opacity: 0.9;
+}
+.dock-tab {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg-elev);
+  backdrop-filter: blur(22px) saturate(1.15);
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  line-height: 1.2;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+.dock-tab:hover {
+  color: var(--cyan);
+  border-color: rgba(78, 201, 212, 0.5);
+}
+.dock-tab:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
+.shell.is-collapsed {
+  z-index: 28;
+  top: auto;
+  left: auto;
+  right: auto !important;
+  bottom: auto !important;
+  width: max-content !important;
+  height: max-content !important;
+  max-width: none !important;
+  max-height: none !important;
+  padding: 2px;
+}
+.shell.is-collapsed.right,
+.shell.is-collapsed.left-top,
+.shell.is-collapsed.left-bot,
+.shell.is-collapsed.stats {
+  top: auto;
+  bottom: auto !important;
+  right: auto !important;
+  left: auto;
+}
+.shell.is-collapsed .panel {
+  display: none;
+}
+.shell.is-collapsed .dock-tab {
+  display: flex;
+  width: auto;
+  height: auto;
+}
+.shell.dock-left .dock-tab,
+.shell.dock-right .dock-tab {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.28em;
+  padding: 16px 9px;
+}
+.shell.dock-top .dock-tab,
+.shell.dock-bottom .dock-tab {
+  writing-mode: horizontal-tb;
+  letter-spacing: 0.16em;
+  padding: 8px 16px;
+  white-space: nowrap;
+}
+#dock-snap-guide {
+  position: fixed;
+  pointer-events: none;
+  z-index: 50;
+  opacity: 0;
+  background: var(--cyan);
+  box-shadow: 0 0 18px rgba(78, 201, 212, 0.55);
+  transition: opacity 0.15s var(--ease);
+}
+#dock-snap-guide.is-on {
+  opacity: 0.9;
+}
+#dock-snap-guide.edge-left {
+  left: 0;
+  top: 10%;
+  bottom: 10%;
+  width: 3px;
+}
+#dock-snap-guide.edge-right {
+  right: 0;
+  top: 10%;
+  bottom: 10%;
+  width: 3px;
+}
+#dock-snap-guide.edge-top {
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 3px;
+}
+#dock-snap-guide.edge-bottom {
+  bottom: 0;
+  left: 10%;
+  right: 10%;
+  height: 3px;
+}
+body.is-dock-dragging {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+body.is-dock-dragging * {
+  cursor: grabbing !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shell.is-dragging,
+  #dock-snap-guide {
+    transition: none;
+  }
 }
 
 /* stats */
@@ -1050,7 +1213,9 @@ button.linkish:hover {
   opacity: 0;
   animation: barIn 0.9s var(--ease) 1s forwards;
   pointer-events: none;
-  white-space: nowrap;
+  white-space: normal;
+  max-width: min(720px, calc(100vw - 28px));
+  text-align: center;
   transition:
     opacity 0.28s var(--ease),
     transform 0.32s var(--ease),
@@ -1065,6 +1230,8 @@ button.linkish:hover {
 
 /* 大屏专注模式：保留顶部控制条，收起所有遮挡地图的信息面板。 */
 body.panels-collapsed .shell,
+body.panels-collapsed .shell.is-free,
+body.panels-collapsed .shell.is-collapsed,
 body.panels-collapsed .tour-hint,
 body.panels-collapsed .disclaimer {
   opacity: 0 !important;
@@ -1317,18 +1484,23 @@ select.select option {
 /* toast */
 #toasts {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
+  right: 16px;
+  bottom: 16px;
   z-index: 40;
   display: flex;
   flex-direction: column;
   gap: 10px;
   pointer-events: none;
+  width: min(360px, calc(100vw - 24px));
+  max-height: 42vh;
+  overflow: hidden;
 }
 .toast {
   pointer-events: auto;
-  min-width: 280px;
-  max-width: 360px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   padding: 14px 16px;
   border-radius: 16px;
   background: rgba(14, 20, 32, 0.92);
@@ -1389,7 +1561,15 @@ select.select option {
 
 .popup-card {
   padding: 14px 16px 12px;
-  max-width: 300px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.popup-card h4 {
+  overflow-wrap: anywhere;
+}
+.popup-card dd {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .popup-card .ptag {
   display: inline-block;
@@ -1430,6 +1610,14 @@ select.select option {
 }
 
 /* 中等宽度：顶栏允许两行，但控件仍横向、不竖排 */
+@media (max-width: 1480px) {
+  .topbar {
+    border-radius: 22px;
+  }
+  .clock {
+    font-size: 11px;
+  }
+}
 @media (max-width: 1280px) {
   .topbar {
     gap: 8px;
@@ -1456,10 +1644,19 @@ select.select option {
   .panel-toggle-label {
     display: none;
   }
+  .search-box {
+    flex: 1 1 100%;
+    max-width: none;
+    order: 8;
+  }
 }
 @media (max-width: 1100px) {
   .shell.stats {
     display: none;
+  }
+  .shell.stats.is-free,
+  .shell.stats.is-collapsed {
+    display: block;
   }
   .shell.right {
     width: 300px;
@@ -1492,6 +1689,12 @@ select.select option {
   .shell.left-bot {
     display: none;
   }
+  .shell.left-top.is-free,
+  .shell.left-top.is-collapsed,
+  .shell.left-bot.is-free,
+  .shell.left-bot.is-collapsed {
+    display: block;
+  }
   .shell.right {
     left: 12px;
     right: 12px;
@@ -1502,6 +1705,19 @@ select.select option {
   }
   .disclaimer {
     display: none;
+  }
+  .tour-hint {
+    bottom: 8px;
+    font-size: 11px;
+    padding: 6px 10px;
+  }
+  #toasts {
+    right: 10px;
+    bottom: 10px;
+    width: calc(100vw - 20px);
+  }
+  .maplibregl-popup-content {
+    max-height: min(48vh, calc(100vh - 168px));
   }
   .brand h1 {
     font-size: 12px;

@@ -5,8 +5,16 @@ from sqlalchemy.orm import Session
 from .schemas import NormalizedEvent
 
 # 主源优先级:数字越小越权威,决定事件采信哪个源的坐标与量级
-SOURCE_PRIORITY = {"usgs": 1, "emsc": 2, "gdacs": 3,
-                   "eonet": 4, "openmeteo": 5, "gdelt": 9}
+SOURCE_PRIORITY = {
+    "usgs": 1,
+    "cenc": 1,
+    "emsc": 2,
+    "gdacs": 3,
+    "cma": 3,
+    "eonet": 4,
+    "openmeteo": 5,
+    "gdelt": 9,
+}
 
 # 地震匹配参数。这三个值需在 Phase 1 用真实数据校准:
 # 过松会把相邻的独立地震合并,过紧则同一地震在图上出现多个点。
@@ -66,7 +74,9 @@ def find_matching_event(s: Session, ev: NormalizedEvent) -> int | None:
 
 
 def should_take_over(new_source: str, current_primary: str | None) -> bool:
-    """新来的源是否比现有主源更权威(决定是否覆盖坐标与量级)"""
+    """新来的源是否覆盖坐标、量级、类型。同源修订必须覆盖，否则分类纠正无法落地。"""
     if not current_primary:
+        return True
+    if new_source == current_primary:
         return True
     return SOURCE_PRIORITY.get(new_source, 99) < SOURCE_PRIORITY.get(current_primary, 99)

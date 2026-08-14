@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .logging_setup import setup_logging
+from .log_retention import run_log_retention
 from .api import routes_events, routes_health, ws
 from .collectors.usgs import UsgsCollector
 from .collectors.gdacs import GdacsCollector
@@ -24,6 +25,8 @@ from .collectors.gdelt import GdeltCollector
 from .collectors.war_hotspots import WarHotspotsCollector
 from .collectors.openmeteo_flood import OpenMeteoFloodCollector
 from .collectors.firms import FirmsCollector
+from .collectors.cma_alert import CmaAlertCollector
+from .collectors.cenc import CencCollector
 from .collectors.emsc_ws import start_emsc_listener
 from .core.alerts import evaluate_alerts
 
@@ -80,6 +83,22 @@ def _register_jobs() -> None:
         scheduler.add_job(OpenMeteoFloodCollector().run, "interval",
                           seconds=settings.interval_openmeteo,
                           id="openmeteo", replace_existing=True)
+    if getattr(settings, "enable_cma", True):
+        scheduler.add_job(
+            _cma_tick,
+            "interval",
+            seconds=int(getattr(settings, "interval_cma", 300) or 300),
+            id="cma",
+            replace_existing=True,
+        )
+    if getattr(settings, "enable_cenc", True):
+        scheduler.add_job(
+            _cenc_tick,
+            "interval",
+            seconds=int(getattr(settings, "interval_cenc", 180) or 180),
+            id="cenc",
+            replace_existing=True,
+        )
     if settings.enable_firms:
         interval_firms = getattr(settings, "interval_firms", 900) or 900
         scheduler.add_job(
@@ -93,6 +112,13 @@ def _register_jobs() -> None:
 
     scheduler.add_job(_alert_tick, "interval", seconds=60,
                       id="alerts", replace_existing=True)
+    scheduler.add_job(
+        run_log_retention,
+        "interval",
+        minutes=10,
+        id="log_retention",
+        replace_existing=True,
+    )
 
     # USGS 停机回补改为一次性 job，避免堵住 lifespan 启动
     # SQLAlchemyJobStore 不能序列化 lambda，必须用模块级可引用函数
@@ -107,6 +133,14 @@ def _register_jobs() -> None:
 
 def _usgs_backfill_once() -> None:
     UsgsCollector(backfill=True).run()
+
+
+def _cma_tick() -> None:
+    CmaAlertCollector().run()
+
+
+def _cenc_tick() -> None:
+    CencCollector().run()
 
 
 def _start_runtime() -> None:
@@ -129,6 +163,16 @@ def _start_runtime() -> None:
             GdeltCollector().run()
         except Exception as e:
             log.warning("GDELT 首采失败: %r", e)
+    if getattr(settings, "enable_cma", True):
+        try:
+            _cma_tick()
+        except Exception as e:
+            log.warning("中央气象台预警首采失败: %r", e)
+    if getattr(settings, "enable_cenc", True):
+        try:
+            _cenc_tick()
+        except Exception as e:
+            log.warning("中国地震台网首采失败: %r", e)
 
     log.info("系统启动完成,已注册 %d 个定时任务", len(scheduler.get_jobs()))
 

@@ -7,8 +7,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$ROOT/logs"
-API_PORT="${API_PORT:-8000}"
-VITE_PORT="${VITE_PORT:-5173}"
+API_PORT="${API_PORT:-8001}"
+VITE_PORT="${VITE_PORT:-5180}"
 STOP_PG=0
 for a in "$@"; do
   case "$a" in
@@ -62,6 +62,10 @@ rm -f "$ROOT/.vite-dev.url"
 if [[ "$STOP_PG" -eq 1 ]]; then
   log "停止 postgresql@17 …"
   brew services stop postgresql@17 || true
+fi
+
+if [[ -x "$ROOT/app/.venv/bin/python" ]]; then
+  (cd "$ROOT/app" && .venv/bin/python -m app.log_retention) || true
 fi
 
 log "已停止应用进程（Postgres 默认保持运行）"

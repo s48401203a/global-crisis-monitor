@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# 一键启动：PostgreSQL + FastAPI(8000) + Vite HMR(5173)
+# 一键启动：PostgreSQL + FastAPI(8001) + Vite HMR(5180)
 # 用法:
 #   ./start.sh           # 启动并打开浏览器
 #   ./start.sh --no-open # 只启动不打开
-#   API_PORT=8000 VITE_PORT=5173 ./start.sh
+#   API_PORT=8001 VITE_PORT=5180 ./start.sh
+# 5173/8000 让给其他本机 Vite 项目，本项目固定 5180/8001
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -23,8 +24,8 @@ export PATH="$HOME/.local/bin:$PG_BIN:/opt/homebrew/bin:/usr/local/bin:$APP/.ven
 export PYTHONUTF8=1
 export PYTHONUNBUFFERED=1
 
-API_PORT="${API_PORT:-8000}"
-VITE_PORT="${VITE_PORT:-5173}"
+API_PORT="${API_PORT:-8001}"
+VITE_PORT="${VITE_PORT:-5180}"
 API_URL="http://127.0.0.1:${API_PORT}"
 VITE_URL="http://127.0.0.1:${VITE_PORT}"
 OPEN_BROWSER=1
@@ -36,6 +37,9 @@ for a in "$@"; do
 done
 
 mkdir -p "$LOG_DIR"
+if [[ -x "$APP/.venv/bin/python" ]]; then
+  (cd "$APP" && .venv/bin/python -m app.log_retention) || true
+fi
 LOCK_DIR="$LOG_DIR/start.lock"
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
   echo "[start] 另一个 start.sh 正在执行，避免重复拉起 Vite"
