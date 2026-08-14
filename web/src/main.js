@@ -171,7 +171,7 @@ function L() {
 const UI_I18N = {
   zh: {
     title: "全球综合危机监测中心",
-    brandSub: "公开数据 · 本地部署",
+    brandSub: "公开数据 · 本地部署 · 非官方",
     live: "实时运行",
     global: "全球总览",
     local: "本地专题",
@@ -224,7 +224,7 @@ const UI_I18N = {
   },
   en: {
     title: "Global Crisis Monitor",
-    brandSub: "Open data · Local deploy",
+    brandSub: "Open data · Local · unofficial",
     live: "Live",
     global: "Global",
     local: "Local",

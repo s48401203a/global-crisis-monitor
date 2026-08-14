@@ -8,6 +8,11 @@
 
 > Public repo · No cloud account required for core sources · Credentials stay on your machine
 
+作者 / Author: [s48401203a](https://github.com/s48401203a) · 协议 / License: [MIT](./LICENSE)
+
+本项目为本地演示系统，不代表中央气象台、地震台网或任何政府机构。  
+This is an unofficial local demo. Not affiliated with CMA, CENC, or any government agency.
+
 ---
 
 ## 中文
@@ -108,6 +113,10 @@ cd app && PYTHONUTF8=1 .venv/bin/python -m tests.run_unit
 
 本地演示可用。FIRMS 无密钥则关闭。根目录 Vite+ `vp staged` hook 仍缺 `vite.config.ts`，提交时需 `--no-verify`。欢迎 issue / PR。
 
+### 许可
+
+[MIT](./LICENSE) © 2026 [s48401203a](https://github.com/s48401203a)
+
 ---
 
 ## English
@@ -207,3 +216,7 @@ cd app && PYTHONUTF8=1 .venv/bin/python -m tests.run_unit
 ### Status
 
 Usable as a local demo. FIRMS stays off without a map key. The repo-root Vite+ `vp staged` hook still expects a root `vite.config.ts`, so commits use `--no-verify`. Issues and PRs are welcome.
+
+### License
+
+[MIT](./LICENSE) © 2026 [s48401203a](https://github.com/s48401203a)
