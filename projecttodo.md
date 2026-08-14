@@ -14,6 +14,11 @@
 
 ---
 
+### 2026-08-14 【Grok 4.6】 提交 macOS 部署 PR
+
+- **规模**：分支 `feat/macos-local-deploy` → PR #1，不含 `.env` / `secrets/`
+- **链接**：https://github.com/s48401203a/global-crisis-monitor/pull/1
+
 ### 2026-08-14 【Grok 4.6】 macOS 完整落地部署
 
 - **规模**：克隆 GitHub 仓库；Homebrew PostgreSQL 17 + PostGIS；Python 3.13 venv；Vite 前端依赖；新增 `setup/macos-deploy.sh`、`start.sh`、`stop.sh`
