@@ -14,6 +14,11 @@
 
 ---
 
+### 2026-08-14 【Grok 4.6】 仓库中英双语说明
+
+- README 中英对照：定位、数据源、快速开始、架构、安全
+- DEPLOY.md / web/README 补英文入口与 5180/8001
+
 ### 2026-08-14 【Grok 4.6】 推送 feat 分支并更新公开 PR
 
 - 仓库 `s48401203a/global-crisis-monitor` 保持 Public
