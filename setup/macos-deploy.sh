@@ -128,8 +128,8 @@ INTERVAL_OPENMETEO=21600
 INTERVAL_CMA=300
 INTERVAL_CENC=180
 
-ALERT_EQ_GLOBAL_MAG=6.0
-ALERT_EQ_LOCAL_MAG=4.5
+ALERT_EQ_GLOBAL_MAG=5.0
+ALERT_EQ_LOCAL_MAG=4.0
 ALERT_MUTE_MINUTES=30
 ALERT_CONFLICT_MIN_CONFIDENCE=0.7
 ENV
@@ -182,5 +182,5 @@ echo "[macos-deploy] 验收数据库 …"
 "$PG_BIN/psql" -d crisis -c "SELECT to_regclass('public.event') AS event_table;"
 
 echo "[macos-deploy] 完成。下一步: $ROOT/start.sh --open"
-echo "  前端: http://127.0.0.1:5173"
-echo "  API : http://127.0.0.1:8000/api/health"
+echo "  前端: http://127.0.0.1:5180"
+echo "  API : http://127.0.0.1:8001/api/health"

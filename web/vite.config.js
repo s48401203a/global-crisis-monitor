@@ -1,7 +1,7 @@
 import { defineConfig } from "vite-plus";
 
 // 前端 Vite 开发服务器：热更新预览
-// API / WebSocket / 国界数据代理到 FastAPI 后端 (127.0.0.1:8000)
+// API / WebSocket / 国界数据代理到 FastAPI 后端 (127.0.0.1:8001)
 export default defineConfig({
   // 根路径部署：dist 挂载于后端根路径，与 main.js 内 /data /api /ws 绝对路径一致
   base: "/",

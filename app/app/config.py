@@ -33,8 +33,8 @@ class Settings(BaseSettings):
     interval_cenc: int = 180
     interval_firms: int = 900
 
-    alert_eq_global_mag: float = 6.0
-    alert_eq_local_mag: float = 4.5
+    alert_eq_global_mag: float = 5.0
+    alert_eq_local_mag: float = 4.0
     alert_mute_minutes: int = 30
     alert_conflict_min_confidence: float = 0.7
 

@@ -90,8 +90,10 @@ def _insert_event(s, ev: NormalizedEvent, sev: float) -> int:
 
 def _update_event(s, eid: int, ev: NormalizedEvent, sev: float) -> None:
     cur = s.execute(text(
-        "SELECT primary_source, severity FROM event WHERE id = :eid"
+        "SELECT primary_source, severity, status FROM event WHERE id = :eid"
     ), {"eid": eid}).fetchone()
+    if cur and cur[2] == "deleted":
+        return
     take_over = should_take_over(ev.source, cur[0] if cur else None)
 
     fp = json.dumps(ev.footprint_geojson) if ev.footprint_geojson else None
@@ -101,12 +103,11 @@ def _update_event(s, eid: int, ev: NormalizedEvent, sev: float) -> None:
                revision = revision + 1,
                updated_at = now(),
                status = CASE
-                            WHEN status = 'deleted' AND NOT :take THEN 'deleted'
                             WHEN status = 'unconfirmed' AND :conf >= 0.7 THEN 'active'
                             ELSE 'revised'
                         END,
                confidence = GREATEST(confidence, :conf),
-               -- 仅当新源更权威时才覆盖坐标、量级、类型
+               -- 更权威源或同源修订时覆盖坐标、量级、类型；deleted 行在上方已跳过
                centroid = CASE WHEN :take THEN ST_MakePoint(:lon,:lat)::geography
                                ELSE centroid END,
                magnitude_value = CASE WHEN :take THEN COALESCE(:mv, magnitude_value)

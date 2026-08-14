@@ -23,8 +23,8 @@ bash setup/macos-deploy.sh
 ./start.sh --open
 ```
 
-入口 / URLs：`http://127.0.0.1:5180`（Vite HMR）、`http://127.0.0.1:8001/api/health`。  
-若 5173 / 8000 已被占用，脚本会改用这两端口。 / If 5173 / 8000 are busy, the scripts fall back to 5180 / 8001.
+macOS 入口 / URLs：`http://127.0.0.1:5180`（Vite HMR）、`http://127.0.0.1:8001/api/health`。  
+Windows 脚本仍默认 5173 / 8000。可用环境变量覆盖。 / Windows scripts still default to 5173 / 8000.
 
 ## 1. 克隆
 

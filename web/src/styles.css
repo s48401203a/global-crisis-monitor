@@ -138,13 +138,26 @@ body::before {
   box-shadow: var(--shadow) !important;
   padding: 0 !important;
   font-family: var(--font) !important;
-  max-height: min(56vh, calc(100vh - 148px));
+  max-height: min(46vh, calc(100vh - 168px));
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.maplibregl-popup-tip {
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
   border-top-color: #0f1622 !important;
+}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: #0f1622 !important;
+}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: #0f1622 !important;
+}
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: #0f1622 !important;
 }
 .maplibregl-popup-close-button {
   color: var(--muted) !important;

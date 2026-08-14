@@ -57,7 +57,7 @@ bash setup/macos-deploy.sh
 | http://127.0.0.1:5180 | 开发界面（Vite HMR，`/api` `/ws` 代理到 8001） |
 | http://127.0.0.1:8001 | API；也可挂 `web/dist` |
 
-本机 5173 / 8000 被占用时，脚本改用 **5180 / 8001**。
+本仓库 macOS 开发默认 **5180 / 8001**（避开本机常见的 5173 / 8000）。可用 `VITE_PORT` / `API_PORT` 覆盖。
 
 密码只写在 `app/.env` 和 `secrets/pg_superpass`，不要提交。模板：
 
@@ -157,7 +157,7 @@ bash setup/macos-deploy.sh
 | http://127.0.0.1:5180 | Dev UI (Vite HMR; `/api` `/ws` proxied to 8001) |
 | http://127.0.0.1:8001 | API; can also serve `web/dist` |
 
-If 5173 / 8000 are already taken, the scripts use **5180 / 8001**.
+macOS defaults are **5180 / 8001** (to stay off the usual 5173 / 8000). Override with `VITE_PORT` / `API_PORT`.
 
 Put passwords only in `app/.env` and `secrets/pg_superpass`. Never commit them.
 

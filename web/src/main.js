@@ -1,5 +1,5 @@
 import "./styles.css";
-import { initDockablePanels, refreshDockTitles, visibleShellInsets } from "./dock-panels.js";
+import { initDockablePanels, refreshDockTitles } from "./dock-panels.js";
 import { parseSearchQuery, matchSearchRecord } from "./event-search.js";
 import {
   getCityLabelCollection,
@@ -86,7 +86,7 @@ const ZH = {
   mapForm: "地图形态",
   surface: "地表材质",
   langSwitched: "界面与地图地名已切换为中文",
-  newAlert: "新告警",
+  newAlert: "新灾害",
   alertPush: "收到新事件推送",
 };
 
@@ -159,7 +159,7 @@ const EN = {
   mapForm: "Map mode",
   surface: "Surface",
   langSwitched: "UI and map labels switched to English",
-  newAlert: "New alert",
+  newAlert: "New event",
   alertPush: "New event push received",
 };
 
@@ -200,7 +200,7 @@ const UI_I18N = {
     eqLt5: "地震<5",
     eqGe5: "≥5",
     eqGe7: "≥7",
-    blink: "近 1 小时内事件闪烁 1 分钟（保持类型色）后恢复静态",
+    blink: "新灾害图标闪烁，并自动飞到发生点弹出信息框",
     health: "数据源健康",
     feed: "事件流",
     panelsHide: "收起面板",
@@ -253,7 +253,7 @@ const UI_I18N = {
     eqLt5: "EQ <5",
     eqGe5: "≥5",
     eqGe7: "≥7",
-    blink: "Events from the last hour blink for 1 minute, then stay static",
+    blink: "New events blink, fly the map to the site, and open a popup",
     health: "Source health",
     feed: "Event feed",
     panelsHide: "Hide panels",
@@ -409,11 +409,22 @@ function setInvertTypeFilters() {
   if (lastFeatures.length) applyFeatures(lastFeatures);
 }
 
-/** 仅近 1 小时内的事件可闪烁；首次进入闪烁后连续 1 分钟，超时恢复静态 */
-const LIVE_WINDOW_MS = 60 * 60 * 1000; // 近 1 小时
-const BLINK_DURATION_MS = 60 * 1000; // 连续闪烁 1 分钟
+/** 近时事件可闪烁；新灾害额外闪 3 分钟并自动定位弹窗 */
+const LIVE_WINDOW_MS = 30 * 60 * 1000;
+const BLINK_DURATION_MS = 2 * 60 * 1000;
+const BREAKING_BLINK_MS = 3 * 60 * 1000;
+const STARTUP_BREAKING_MS = 15 * 60 * 1000;
 /** eventId -> 本页开始闪烁的时间戳 */
 const blinkStartedAt = new Map();
+const breakingBlinkUntil = new Map();
+const seenEventIds = new Set();
+const breakingQueue = [];
+const breakingQueued = new Set();
+let breakingAlertBusy = false;
+let applyingFeatures = false;
+let breakingCruisePaused = false;
+let breakingDwellCancel = null;
+let popupCloseFromCode = false;
 
 /** 地图标记色 = 列表/等级色（地震按震级，其它按类型） */
 function mapMarkerColor(p) {
@@ -866,35 +877,180 @@ function refreshEffectsFocus(focusId) {
   map.getSource("effects").setData({ type: "FeatureCollection", features });
 }
 
+function eventNewestMs(p) {
+  const occ = p?.occurred_at ? new Date(p.occurred_at).getTime() : NaN;
+  const seen = p?.first_seen_at ? new Date(p.first_seen_at).getTime() : NaN;
+  const candidates = [occ, seen].filter(Number.isFinite);
+  return candidates.length ? Math.max(...candidates) : NaN;
+}
+
+function isBreakingAlert(f) {
+  const p = (f && f.properties) || f || {};
+  if (isMinorCmaAlert(p)) return false;
+  if (p.type === "war") return false;
+  const coords = f && f.geometry && f.geometry.coordinates;
+  const lon = coords ? Number(coords[0]) : Number(p._lon);
+  const lat = coords ? Number(coords[1]) : Number(p._lat);
+  const mag = Number(p.magnitude);
+  const sev = Number(p.severity) || 0;
+  const t = p.type;
+  if (t === "earthquake") {
+    const local = Number.isFinite(lon) && Number.isFinite(lat) && inLocal(lon, lat);
+    if (local && Number.isFinite(mag) && mag >= 4.0) return true;
+    return Number.isFinite(mag) && mag >= 4.5;
+  }
+  if (t === "rainstorm" || t === "flood" || t === "cyclone" || t === "volcano") return true;
+  if (t === "wildfire") return sev >= 0.45;
+  if (t === "armed_clash" || t === "crisis_signal") {
+    const c = Number(p.confidence);
+    return !Number.isFinite(c) || c >= 0.7;
+  }
+  return sev >= 0.75;
+}
+
 /**
- * 是否闪烁：
- * 1) 发生时间或首次采集时间落在近 1 小时内
- * 2) 自本页首次将其标为闪烁起，未满 1 分钟
- * 超过 1 分钟闪烁时长 → 恢复正常静态点（仍为类型配色）
+ * 是否闪烁：新灾害强制闪；其余仅近时且够格的事件闪一阵。
  */
 function isLiveEvent(p) {
+  if (!p) return false;
   const now = Date.now();
-  const occ = p.occurred_at ? new Date(p.occurred_at).getTime() : NaN;
-  const seen = p.first_seen_at ? new Date(p.first_seen_at).getTime() : NaN;
-  const candidates = [occ, seen].filter(Number.isFinite);
-  if (!candidates.length) return false;
-  // 取较新的时间作为「近时」参考
-  const ref = Math.max(...candidates);
+  const bid = String(p.id);
+  const until = breakingBlinkUntil.get(bid);
+  if (until) {
+    if (now < until) return true;
+    breakingBlinkUntil.delete(bid);
+  }
+  if (!isBreakingAlert(p)) {
+    blinkStartedAt.delete(p.id);
+    return false;
+  }
+  const ref = eventNewestMs(p);
+  if (!Number.isFinite(ref)) return false;
   const age = now - ref;
   if (age < 0 || age > LIVE_WINDOW_MS) {
     blinkStartedAt.delete(p.id);
     return false;
   }
+  if (!blinkStartedAt.has(p.id)) blinkStartedAt.set(p.id, now);
+  return now - blinkStartedAt.get(p.id) < BLINK_DURATION_MS;
+}
 
-  const id = p.id;
-  if (!blinkStartedAt.has(id)) {
-    blinkStartedAt.set(id, now);
+function markBreakingBlink(id) {
+  if (id == null) return;
+  breakingBlinkUntil.set(String(id), Date.now() + BREAKING_BLINK_MS);
+}
+
+function enqueueBreakingAlerts(feats) {
+  breakingCruisePaused = false;
+  for (const f of feats || []) {
+    if (!f || !f.properties || !f.geometry || !f.geometry.coordinates) continue;
+    const id = String(f.properties.id);
+    if (breakingQueued.has(id)) continue;
+    if (tourActiveId != null && String(tourActiveId) === id) continue;
+    breakingQueued.add(id);
+    breakingQueue.push(f);
+    markBreakingBlink(id);
   }
-  const started = blinkStartedAt.get(id);
-  if (now - started >= BLINK_DURATION_MS) {
-    return false; // 已连续闪烁满 1 分钟，恢复正常
+  breakingQueue.sort(
+    (a, b) => (Number(b.properties.severity) || 0) - (Number(a.properties.severity) || 0),
+  );
+  if (!applyingFeatures && lastFeatures.length) applyFeatures(lastFeatures);
+  else pumpBreakingQueue();
+}
+
+function pumpBreakingQueue() {
+  if (breakingAlertBusy || tourFlying || breakingCruisePaused) return;
+  if (typeof document !== "undefined" && document.hidden) return;
+  const f = breakingQueue.shift();
+  if (!f) return;
+  breakingQueued.delete(String(f.properties.id));
+  focusBreakingEvent(f);
+}
+
+function breakingDwellMs(p) {
+  if (!p || p.category === "conflict") return 8000;
+  const mag = Number(p.magnitude);
+  if (p.type === "earthquake" && Number.isFinite(mag)) {
+    if (mag >= 7) return 60000;
+    if (mag >= 5) return 30000;
+    return 10000;
   }
-  return true;
+  const lv = cmaSignalLevel(p);
+  if (lv === "红") return 60000;
+  if (lv === "橙") return 30000;
+  const sev = Number(p.severity) || 0;
+  if (sev >= 0.8) return 60000;
+  if (sev >= 0.55) return 30000;
+  return 10000;
+}
+
+function cancelBreakingDwell() {
+  if (typeof breakingDwellCancel === "function") {
+    breakingDwellCancel();
+    breakingDwellCancel = null;
+  }
+}
+
+function waitBreakingDwell(ms) {
+  return new Promise((resolve) => {
+    const t = setTimeout(done, ms);
+    function done() {
+      if (breakingDwellCancel === done) breakingDwellCancel = null;
+      clearTimeout(t);
+      resolve();
+    }
+    breakingDwellCancel = done;
+  });
+}
+
+async function focusBreakingEvent(f) {
+  if (!f || !mapReady) return;
+  const [lon, lat] = f.geometry.coordinates;
+  const p = f.properties;
+  breakingAlertBusy = true;
+  breakingCruisePaused = false;
+  highlightTourItem(p.id);
+  showToast(L().newAlert, eventHeadline(p));
+  try {
+    await flyPromise({
+      center: [lon, lat],
+      zoom: zoomForEvent(f),
+      duration: 1400,
+      curve: 1.28,
+      essential: true,
+    });
+    if (mapReady) showEventPopup(p, [lon, lat], { fromBreaking: true });
+    const dwell = breakingDwellMs(p);
+    if (dwell > 0 && !breakingCruisePaused) await waitBreakingDwell(dwell);
+  } finally {
+    breakingAlertBusy = false;
+    if (!breakingCruisePaused) pumpBreakingQueue();
+  }
+}
+
+function detectAndQueueBreaking(feats) {
+  const list = (feats || []).filter((f) => f && f.properties && f.geometry && f.geometry.coordinates);
+  if (!seenEventIds.size) {
+    for (const f of list) seenEventIds.add(String(f.properties.id));
+    const now = Date.now();
+    const recent = list
+      .filter((f) => isBreakingAlert(f))
+      .filter((f) => {
+        const ts = eventNewestMs(f.properties);
+        return Number.isFinite(ts) && now - ts <= STARTUP_BREAKING_MS;
+      })
+      .sort((a, b) => eventNewestMs(b.properties) - eventNewestMs(a.properties));
+    if (recent[0]) enqueueBreakingAlerts([recent[0]]);
+    return;
+  }
+  const fresh = [];
+  for (const f of list) {
+    const id = String(f.properties.id);
+    if (seenEventIds.has(id)) continue;
+    seenEventIds.add(id);
+    if (isBreakingAlert(f)) fresh.push(f);
+  }
+  if (fresh.length) enqueueBreakingAlerts(fresh);
 }
 
 function typeLabel(t) {
@@ -2605,9 +2761,9 @@ map.on("load", async () => {
   applySurfaceMode("sat", { silent: true });
   startLivePulse();
   await refresh();
-  setInterval(refresh, 60000);
+  setInterval(refresh, 20000);
   setInterval(loadHealth, 30000);
-  // 每 5 秒重算闪烁态：满 1 分钟后自动恢复静态类型色点
+  // 每 5 秒重算闪烁态：新灾害闪完后恢复静态类型色点
   setInterval(() => {
     if (lastFeatures.length) applyFeatures(lastFeatures);
   }, 5000);
@@ -3591,6 +3747,16 @@ function setSearchQuery(raw, { apply = true } = {}) {
 }
 
 function applyFeatures(allRaw) {
+  applyingFeatures = true;
+  try {
+    applyFeaturesBody(allRaw);
+  } finally {
+    applyingFeatures = false;
+  }
+  pumpBreakingQueue();
+}
+
+function applyFeaturesBody(allRaw) {
   const all = (allRaw || []).map(normalizeEventFeature);
   const wantN = document.getElementById("f-natural")?.checked !== false;
   const wantC = document.getElementById("f-conflict")?.checked !== false;
@@ -3648,10 +3814,18 @@ function applyFeatures(allRaw) {
     if (cntEl) cntEl.textContent = String(typeCounts[it.type] || 0);
   }
 
+  detectAndQueueBreaking(feats);
+
   // is_live + marker_color（地图点色与列表/等级完全一致）
   const enriched = feats.map((f) => {
-    const live = isLiveEvent(f.properties);
-    const p = f.properties;
+    const coords = f.geometry && f.geometry.coordinates;
+    const p0 = {
+      ...f.properties,
+      _lon: coords ? coords[0] : f.properties._lon,
+      _lat: coords ? coords[1] : f.properties._lat,
+    };
+    const live = isLiveEvent(p0);
+    const p = p0;
     const mc = mapMarkerColor(p);
     return {
       ...f,
@@ -3798,91 +3972,133 @@ function buildPopupHtml(p) {
 }
 
 function closeTourPopup() {
+  popupCloseFromCode = true;
   if (tourPopup) {
     try {
       tourPopup.remove();
     } catch (_) {}
     tourPopup = null;
   }
-  // 同时清掉用户点击产生的其它弹窗
   document.querySelectorAll(".maplibregl-popup").forEach((el) => el.remove());
+  popupCloseFromCode = false;
 }
 
-function popupChromePad() {
+function popupTopPad() {
   const bar = document.querySelector(".topbar");
-  const top = bar ? Math.ceil(bar.getBoundingClientRect().bottom) + 10 : 88;
-  const extra = visibleShellInsets();
-  return {
-    top: Math.max(top, extra.top || 0),
-    right: extra.right,
-    bottom: extra.bottom,
-    left: extra.left,
-  };
+  return bar ? Math.ceil(bar.getBoundingClientRect().bottom) + 6 : 76;
+}
+
+function popupPixelOffset(p) {
+  const live = Number(p?.is_live) === 1 || isLiveEvent(p);
+  const sev = Number(p?.severity) || 0;
+  const gap = live ? 8 + sev * 5 : 6 + sev * 2;
+  return Math.round(Math.min(12, Math.max(6, gap)));
 }
 
 function pickPopupAnchor(lngLat) {
   const pt = map.project(lngLat);
-  const pad = popupChromePad();
-  const above = pt.y - pad.top;
-  const below = window.innerHeight - pad.bottom - pt.y;
-  const left = pt.x - pad.left;
-  const right = window.innerWidth - pad.right - pt.x;
-  if (above < 260 && below >= above) {
-    if (left < 170) return "top-left";
-    if (right < 170) return "top-right";
-    return "top";
-  }
-  if (left < 160 && right > left) return "left";
-  if (right < 160) return "right";
-  return "bottom";
+  const top = popupTopPad();
+  const needH = Math.min(300, window.innerHeight * 0.4);
+  const above = pt.y - top;
+  const below = window.innerHeight - 16 - pt.y;
+  const left = pt.x;
+  const right = window.innerWidth - pt.x;
+  let side;
+  if (above < needH && below > 140) side = "top";
+  else if (below < needH && above > 140) side = "bottom";
+  else if (above >= needH) side = "bottom";
+  else side = "top";
+  if (left < 150) return `${side}-left`;
+  if (right < 150) return `${side}-right`;
+  return side;
 }
 
-function clampPopupToViewport(popup) {
+function fitPopupHeight(popup) {
   const root = popup && popup.getElement && popup.getElement();
-  if (!root) return;
-  const box = root.querySelector(".maplibregl-popup-content") || root;
-  box.style.transform = "";
-  const pad = popupChromePad();
+  const box = root && root.querySelector(".maplibregl-popup-content");
+  if (!box) return;
+  const top = popupTopPad();
+  const maxH = Math.max(160, window.innerHeight - top - 24);
+  box.style.maxHeight = `${Math.min(maxH, Math.round(window.innerHeight * 0.44))}px`;
+}
+
+function keepPopupPinnedToMarker(popup) {
+  const root = popup && popup.getElement && popup.getElement();
+  if (!root || !mapReady) return;
+  const box = root.querySelector(".maplibregl-popup-content");
+  if (box) box.style.transform = "";
+  fitPopupHeight(popup);
   const r = root.getBoundingClientRect();
+  const top = popupTopPad();
+  const m = 8;
   let dx = 0;
   let dy = 0;
-  if (r.top < pad.top) dy += pad.top - r.top;
-  if (r.bottom > window.innerHeight - pad.bottom) dy -= r.bottom - (window.innerHeight - pad.bottom);
-  if (r.left < pad.left) dx += pad.left - r.left;
-  if (r.right > window.innerWidth - pad.right) dx -= r.right - (window.innerWidth - pad.right);
-  if (dx || dy) box.style.transform = `translate(${dx}px, ${dy}px)`;
+  if (r.top < top) dy += top - r.top + 4;
+  if (r.bottom > window.innerHeight - m) dy -= r.bottom - (window.innerHeight - m);
+  if (r.left < m) dx += m - r.left;
+  if (r.right > window.innerWidth - m) dx -= r.right - (window.innerWidth - m);
+  if (!dx && !dy) return;
+  if (Math.abs(dx) > 64) dx = Math.sign(dx) * 64;
+  if (Math.abs(dy) > 80) dy = Math.sign(dy) * 80;
+  map.panBy([dx, dy], { duration: 200, essential: true });
 }
 
-function attachPopupClamp(popup) {
-  const run = () => clampPopupToViewport(popup);
-  requestAnimationFrame(run);
-  map.on("move", run);
-  window.addEventListener("resize", run);
-  popup.on("close", () => {
-    map.off("move", run);
-    window.removeEventListener("resize", run);
-  });
+function openPinnedPopup(p, lon, lat, anchor) {
+  const maxW = Math.max(240, Math.min(360, window.innerWidth - 28));
+  return new maplibregl.Popup({
+    closeButton: true,
+    className: "crisis-popup",
+    maxWidth: `${maxW}px`,
+    offset: popupPixelOffset(p),
+    anchor,
+    focusAfterOpen: false,
+  })
+    .setLngLat([lon, lat])
+    .setHTML(buildPopupHtml({ ...p, _lon: lon, _lat: lat }))
+    .addTo(map);
 }
 
-function showEventPopup(p, lngLat) {
+function showEventPopup(p, lngLat, opts = {}) {
   const lon = Array.isArray(lngLat) ? lngLat[0] : lngLat.lng;
   const lat = Array.isArray(lngLat) ? lngLat[1] : lngLat.lat;
   const props = { ...p, _lon: lon, _lat: lat };
   closeTourPopup();
-  const maxW = Math.max(240, Math.min(380, window.innerWidth - 32));
-  tourPopup = new maplibregl.Popup({
-    closeButton: true,
-    className: "crisis-popup",
-    maxWidth: `${maxW}px`,
-    offset: 18,
-    anchor: pickPopupAnchor([lon, lat]),
-    focusAfterOpen: false,
-  })
-    .setLngLat([lon, lat])
-    .setHTML(buildPopupHtml(props))
-    .addTo(map);
-  attachPopupClamp(tourPopup);
-  tourPopup.on("close", () => {
+  let anchor = pickPopupAnchor([lon, lat]);
+  tourPopup = openPinnedPopup(props, lon, lat, anchor);
+  const relayout = () => {
+    if (!tourPopup) return;
+    fitPopupHeight(tourPopup);
+    const root = tourPopup.getElement();
+    if (!root) return;
+    const r = root.getBoundingClientRect();
+    const top = popupTopPad();
+    if (r.top < top - 2 && !String(anchor).startsWith("top")) {
+      popupCloseFromCode = true;
+      try {
+        tourPopup.remove();
+      } catch (_) {}
+      popupCloseFromCode = false;
+      anchor = "top";
+      tourPopup = openPinnedPopup(props, lon, lat, anchor);
+      bindPopupClose(tourPopup, p, opts);
+    }
+    keepPopupPinnedToMarker(tourPopup);
+  };
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      relayout();
+      setTimeout(relayout, 90);
+    });
+  });
+  bindPopupClose(tourPopup, p, opts);
+  tourActiveId = p.id;
+  highlightTourItem(p.id);
+  refreshEffectsFocus(p.id);
+  startEqWavePulse(p.id);
+}
+
+function bindPopupClose(popup, p, opts = {}) {
+  popup.on("close", () => {
     if (_eqWaveTimer) {
       cancelAnimationFrame(_eqWaveTimer);
       _eqWaveTimer = null;
@@ -3892,11 +4108,11 @@ function showEventPopup(p, lngLat) {
       tourActiveId = null;
       refreshEffectsFocus(null);
     }
+    if (!popupCloseFromCode && opts.fromBreaking) {
+      breakingCruisePaused = true;
+      cancelBreakingDwell();
+    }
   });
-  tourActiveId = p.id;
-  highlightTourItem(p.id);
-  refreshEffectsFocus(p.id);
-  startEqWavePulse(p.id);
 }
 
 function highlightTourItem(id) {
@@ -3943,7 +4159,7 @@ function zoomForEvent(f) {
   }
   if (t === "cyclone") return 5.6;
   if (t === "wildfire" || t === "volcano") return 7.0;
-  if (t === "flood") return 7.2;
+  if (t === "flood" || t === "rainstorm") return 7.2;
   if (t === "crisis_signal" || t === "armed_clash") return 5.2;
   return 6.5;
 }
@@ -4041,6 +4257,7 @@ async function tourNextEvent() {
   } finally {
     tourFlying = false;
     updateTourProgress();
+    pumpBreakingQueue();
   }
 }
 
@@ -4235,6 +4452,8 @@ function flyTo(lon, lat) {
  * 3) 飞入并弹窗；之后空格在区域内按时间继续
  */
 async function tourJumpToId(id) {
+  breakingCruisePaused = true;
+  cancelBreakingDwell();
   const all = lastEnrichedPoints;
   const f = all.find((x) => String(x.properties.id) === String(id));
   if (!f) return;
@@ -4485,24 +4704,36 @@ function connectWS() {
       `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`,
     );
     ws.onmessage = (e) => {
+      let d = null;
       try {
-        const d = JSON.parse(e.data);
-        const tip = d.headline
-          ? eventHeadline({
-              headline: d.headline,
-              type: d.type,
-              country: d.country,
-              magnitude: d.magnitude ?? d.magnitude_value,
-            })
-          : d.rule || L().alertPush;
-        showToast(L().newAlert, tip);
+        d = JSON.parse(e.data);
       } catch {
-        showToast(L().newAlert, L().alertPush);
+        d = null;
+      }
+      if (d && d.event_id != null) {
+        markBreakingBlink(d.event_id);
       }
       refresh();
       loadHealth();
     };
-    ws.onclose = () => setTimeout(connectWS, 5000);
+    ws.onopen = () => {
+      try {
+        ws.send("ping");
+      } catch (_) {}
+    };
+    const ping = setInterval(() => {
+      if (ws.readyState !== 1) {
+        clearInterval(ping);
+        return;
+      }
+      try {
+        ws.send("ping");
+      } catch (_) {}
+    }, 25000);
+    ws.onclose = () => {
+      clearInterval(ping);
+      setTimeout(connectWS, 5000);
+    };
   } catch {
     setTimeout(connectWS, 5000);
   }
@@ -4541,3 +4772,22 @@ window.tourJumpToId = tourJumpToId;
 window.flyTo = flyTo;
 window.tourNextEvent = tourNextEvent;
 window.exitTourMode = exitTourMode;
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) pumpBreakingQueue();
+});
+
+if (import.meta.env?.DEV) {
+  window.__crisisDebugBreaking = (id) => {
+    const f = lastEnrichedPoints.find((x) => String(x.properties.id) === String(id));
+    if (f) enqueueBreakingAlerts([f]);
+    return Boolean(f);
+  };
+  window.__crisisDebugDwellMs = (p) => breakingDwellMs(p);
+  window.__crisisDebugPopup = (id) => {
+    const f = lastEnrichedPoints.find((x) => String(x.properties.id) === String(id));
+    if (!f) return false;
+    showEventPopup(f.properties, f.geometry.coordinates);
+    return true;
+  };
+}

@@ -3,7 +3,7 @@ from app.collectors.cenc import CencCollector
 from app.core.severity import compute_severity
 
 
-def test_classify_rainstorm_as_flood() -> None:
+def test_classify_cma_rainstorm_not_flood() -> None:
     assert classify_cma_text("杭州市气象台发布暴雨黄色预警") == "rainstorm"
     assert classify_cma_text("山洪灾害气象风险橙色预警") == "flood"
     assert classify_cma_text("台风橙色预警") == "cyclone"
