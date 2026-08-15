@@ -3,7 +3,7 @@
  *（不要求指针顶到屏幕边）；左右竖排、上下横排；再点名称签展开。
  */
 
-const STORAGE_KEY = "crisis_panel_docks_v1";
+const STORAGE_KEY = "crisis_panel_docks_v2";
 const SNAP_PANEL = 28;
 const SNAP_POINTER = 56;
 const SNAP_PREVIEW = 56;
@@ -13,10 +13,30 @@ const EDGE_PAD = 8;
 const TAB_GAP = 8;
 
 const SPECS = [
-  { id: "stats", sel: ".shell.stats", titleKey: "stTitle", fallback: { zh: "实时统计", en: "Live stats" } },
-  { id: "filter", sel: ".shell.left-top", titleKey: "filter", fallback: { zh: "图层筛选", en: "Layers" } },
-  { id: "health", sel: ".shell.left-bot", titleKey: "health", fallback: { zh: "数据源健康", en: "Source health" } },
-  { id: "feed", sel: ".shell.right", titleKey: "feed", fallback: { zh: "事件流", en: "Event feed" } },
+  {
+    id: "stats",
+    sel: ".shell.stats",
+    titleKey: "stTitle",
+    fallback: { zh: "实时统计", en: "Live stats" },
+  },
+  {
+    id: "filter",
+    sel: ".shell.left-top",
+    titleKey: "filter",
+    fallback: { zh: "图层筛选", en: "Layers" },
+  },
+  {
+    id: "health",
+    sel: ".shell.left-bot",
+    titleKey: "health",
+    fallback: { zh: "数据源健康", en: "Source health" },
+  },
+  {
+    id: "feed",
+    sel: ".shell.right",
+    titleKey: "feed",
+    fallback: { zh: "事件流", en: "Event feed" },
+  },
 ];
 
 let titleResolver = (key, fb) => fb.zh;
@@ -33,10 +53,15 @@ function titleOf(spec) {
 }
 
 function topSafe() {
+  const chrome = document.querySelector(".chrome-top");
+  if (chrome) {
+    const bottom = chrome.getBoundingClientRect().bottom;
+    if (Number.isFinite(bottom) && bottom > 20) return Math.ceil(bottom) + 8;
+  }
   const bar = document.querySelector(".topbar");
-  if (!bar) return 72;
+  if (!bar) return 56;
   const bottom = bar.getBoundingClientRect().bottom;
-  return Number.isFinite(bottom) ? Math.ceil(bottom) + 8 : 72;
+  return Number.isFinite(bottom) ? Math.ceil(bottom) + 8 : 56;
 }
 
 function clamp(n, lo, hi) {
@@ -64,14 +89,27 @@ function saveStates() {
 }
 
 function defaultWidth(spec) {
-  if (spec.id === "stats") return Math.min(720, Math.max(280, window.innerWidth - 40));
-  if (spec.id === "filter") return 268;
-  if (spec.id === "health") return 300;
-  return 360;
+  if (spec.id === "feed") return 280;
+  return 0;
 }
 
-function defaultFeedHeight() {
-  return Math.max(180, window.innerHeight - topSafe() - 18);
+function applyBoxSize(el, spec, st = {}) {
+  const w = st.w || defaultWidth(spec);
+  el.style.width = w ? w + "px" : "max-content";
+  el.style.height = "auto";
+  if (spec.id === "feed") {
+    el.style.maxHeight = defaultFeedMaxHeight() + "px";
+  } else {
+    el.style.maxHeight = "";
+  }
+}
+
+function defaultFeedMaxHeight() {
+  return Math.max(180, window.innerHeight - topSafe() - EDGE_PAD);
+}
+
+function isCompactViewport() {
+  return window.innerWidth <= 760;
 }
 
 function edgeOf(el) {
@@ -248,8 +286,7 @@ function liftToFree(el, spec, rect) {
   el.style.zIndex = String(++zTop);
   if (!el.classList.contains("is-collapsed")) {
     el.style.width = rect.width + "px";
-    if (spec.id === "feed") el.style.height = rect.height + "px";
-    else el.style.height = "auto";
+    el.style.height = spec.id === "feed" ? rect.height + "px" : "auto";
   }
 }
 
@@ -263,6 +300,19 @@ function clampIntoView(el) {
   el.style.top = top + "px";
 }
 
+function expandedOnEdge(edge) {
+  const out = [];
+  document.querySelectorAll(".shell.is-ready:not(.is-collapsed)").forEach((el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 40 || r.height < 40) return;
+    if (edge === "right" && window.innerWidth - r.right <= 40) out.push(r);
+    else if (edge === "left" && r.left <= 40) out.push(r);
+    else if (edge === "top" && r.top <= topSafe() + 8) out.push(r);
+    else if (edge === "bottom" && window.innerHeight - r.bottom <= 40) out.push(r);
+  });
+  return out;
+}
+
 function packEdge(edge) {
   const shells = [...document.querySelectorAll(".shell.is-collapsed.dock-" + edge)];
   if (!shells.length) return;
@@ -272,6 +322,7 @@ function packEdge(edge) {
     const rb = b.getBoundingClientRect();
     return vertical ? ra.top - rb.top : ra.left - rb.left;
   });
+  const blockers = expandedOnEdge(edge);
   const minStart = vertical ? topSafe() : EDGE_PAD;
   const maxEnd = vertical ? window.innerHeight - EDGE_PAD : window.innerWidth - EDGE_PAD;
   let cursor = minStart;
@@ -283,12 +334,20 @@ function packEdge(edge) {
     if (pos + size > maxEnd) pos = Math.max(minStart, maxEnd - size);
     if (vertical) {
       el.style.top = pos + "px";
-      el.style.left =
-        edge === "left" ? EDGE_PAD + "px" : window.innerWidth - r.width - EDGE_PAD + "px";
+      let left = edge === "left" ? EDGE_PAD : window.innerWidth - r.width - EDGE_PAD;
+      for (const box of blockers) {
+        if (edge === "right") left = Math.min(left, box.left - r.width - TAB_GAP);
+        if (edge === "left") left = Math.max(left, box.right + TAB_GAP);
+      }
+      el.style.left = Math.max(EDGE_PAD, left) + "px";
     } else {
       el.style.left = pos + "px";
-      el.style.top =
-        edge === "top" ? topSafe() + "px" : window.innerHeight - r.height - EDGE_PAD + "px";
+      let top = edge === "top" ? topSafe() : window.innerHeight - r.height - EDGE_PAD;
+      for (const box of blockers) {
+        if (edge === "bottom") top = Math.min(top, box.top - r.height - TAB_GAP);
+        if (edge === "top") top = Math.max(top, box.bottom + TAB_GAP);
+      }
+      el.style.top = Math.max(EDGE_PAD, top) + "px";
     }
     cursor = pos + size + TAB_GAP;
     const spec = specOf(el);
@@ -333,6 +392,47 @@ function applyCollapsed(el, spec, edge, along) {
   requestAnimationFrame(place);
 }
 
+function pinFeedToRight(el, spec) {
+  if (isCompactViewport()) {
+    el.style.width = "auto";
+    el.style.height = "auto";
+    el.style.maxHeight = Math.round(window.innerHeight * 0.42) + "px";
+    el.style.left = "12px";
+    el.style.right = "12px";
+    el.style.top = "auto";
+    el.style.bottom = "12px";
+    return;
+  }
+  const w = (spec && defaultWidth(spec)) || 280;
+  el.style.width = w + "px";
+  el.style.height = "auto";
+  el.style.maxHeight = defaultFeedMaxHeight() + "px";
+  el.style.right = "auto";
+  el.style.bottom = "auto";
+  el.style.left = window.innerWidth - w - EDGE_PAD + "px";
+  el.style.top = topSafe() + "px";
+}
+
+function packDefaultLeftStack() {
+  const filter = document.querySelector(".shell.left-top");
+  const health = document.querySelector(".shell.left-bot");
+  if (!filter || filter.classList.contains("is-collapsed") || filter.classList.contains("is-free"))
+    return;
+  if (window.getComputedStyle(filter).display === "none") return;
+  const top = topSafe();
+  filter.style.top = top + "px";
+  let reserve = EDGE_PAD;
+  if (
+    health &&
+    !health.classList.contains("is-collapsed") &&
+    !health.classList.contains("is-free") &&
+    window.getComputedStyle(health).display !== "none"
+  ) {
+    reserve = Math.ceil(health.getBoundingClientRect().height) + EDGE_PAD + TAB_GAP + 4;
+  }
+  filter.style.maxHeight = Math.max(160, window.innerHeight - top - reserve) + "px";
+}
+
 function applyFloating(el, spec, st) {
   el.classList.add("is-ready", "is-free");
   el.classList.remove("is-collapsed", "is-dragging");
@@ -341,11 +441,14 @@ function applyFloating(el, spec, st) {
   el.style.transform = "none";
   el.style.right = "auto";
   el.style.bottom = "auto";
-  el.style.width = (st.w || defaultWidth(spec)) + "px";
-  if (spec.id === "feed") el.style.height = (st.h || defaultFeedHeight()) + "px";
-  else el.style.height = "auto";
+  applyBoxSize(el, spec, spec.id === "feed" ? {} : st);
   const tab = el.querySelector(".dock-tab");
   if (tab) tab.setAttribute("aria-expanded", "true");
+  if (spec.id === "feed") {
+    pinFeedToRight(el, spec);
+    persist(el, spec, { collapsed: false, edge: "right" });
+    return;
+  }
   el.style.left = (st.x ?? EDGE_PAD) + "px";
   el.style.top = (st.y ?? topSafe()) + "px";
   clampIntoView(el);
@@ -361,14 +464,8 @@ function expandPanel(el, spec) {
   const tab = el.querySelector(".dock-tab");
   if (tab) tab.setAttribute("aria-expanded", "true");
 
-  const w = st.w || defaultWidth(spec);
-  el.style.width = w + "px";
-  if (spec.id === "feed") {
-    const h = Math.min(st.h || defaultFeedHeight(), window.innerHeight - topSafe() - EDGE_PAD);
-    el.style.height = h + "px";
-  } else {
-    el.style.height = "auto";
-  }
+  applyBoxSize(el, spec, spec.id === "feed" ? {} : st);
+  if (spec.id === "feed") pinFeedToRight(el, spec);
   el.style.right = "auto";
   el.style.bottom = "auto";
   el.style.transform = "none";
@@ -382,9 +479,9 @@ function expandPanel(el, spec) {
     if (Number.isFinite(st.restoreX) && Number.isFinite(st.restoreY)) {
       left = clamp(st.restoreX, EDGE_PAD, maxL);
       top = clamp(st.restoreY, EDGE_PAD, maxT);
-    } else if (edge === "right") {
+    } else if (edge === "right" || spec.id === "feed") {
       left = window.innerWidth - r.width - EDGE_PAD;
-      top = clamp(st.y ?? tabRect.top, topSafe(), maxT);
+      top = spec.id === "feed" ? topSafe() : clamp(st.y ?? tabRect.top, topSafe(), maxT);
     } else if (edge === "left") {
       left = EDGE_PAD;
       top = clamp(st.y ?? tabRect.top, topSafe(), maxT);
@@ -400,7 +497,9 @@ function expandPanel(el, spec) {
     }
     el.style.left = left + "px";
     el.style.top = top + "px";
-    persist(el, spec, { collapsed: false, edge: edge || null });
+    persist(el, spec, { collapsed: false, edge: edge || (spec.id === "feed" ? "right" : null) });
+    packEdge("right");
+    packEdge("left");
   });
 }
 
@@ -541,6 +640,11 @@ function pinUnmovedBelowTopbar() {
 
 function onResize() {
   pinUnmovedBelowTopbar();
+  const feedSpec = SPECS.find((s) => s.id === "feed");
+  const feedEl = feedSpec && document.querySelector(feedSpec.sel);
+  if (feedEl && !feedEl.classList.contains("is-collapsed")) {
+    pinFeedToRight(feedEl, feedSpec);
+  }
   for (const spec of SPECS) {
     const el = document.querySelector(spec.sel);
     if (!el || !el.classList.contains("is-free")) continue;
@@ -552,10 +656,15 @@ function onResize() {
           ? parseFloat(el.style.top) || 0
           : parseFloat(el.style.left) || 0;
       applyCollapsed(el, spec, edge, along);
+    } else if (spec.id === "feed") {
+      pinFeedToRight(el, spec);
     } else {
       clampIntoView(el);
     }
   }
+  packDefaultLeftStack();
+  packEdge("right");
+  packEdge("left");
 }
 
 export function refreshDockTitles() {
@@ -579,8 +688,10 @@ export function visibleShellInsets() {
     const midX = r.left + r.width / 2;
     const midY = r.top + r.height / 2;
     if (midX < window.innerWidth * 0.42) left = Math.max(left, Math.ceil(r.right) + 8);
-    if (midX > window.innerWidth * 0.58) right = Math.max(right, Math.ceil(window.innerWidth - r.left) + 8);
-    if (midY > window.innerHeight * 0.78) bottom = Math.max(bottom, Math.ceil(window.innerHeight - r.top) + 8);
+    if (midX > window.innerWidth * 0.58)
+      right = Math.max(right, Math.ceil(window.innerWidth - r.left) + 8);
+    if (midY > window.innerHeight * 0.78)
+      bottom = Math.max(bottom, Math.ceil(window.innerHeight - r.top) + 8);
     if (midY < window.innerHeight * 0.22) top = Math.max(top, Math.ceil(r.bottom) + 8);
   });
   return { left, right, bottom, top };
@@ -600,8 +711,23 @@ export function initDockablePanels(opts = {}) {
   window.addEventListener("resize", onResize);
   refreshDockTitles();
   pinUnmovedBelowTopbar();
-  window.setTimeout(pinUnmovedBelowTopbar, 200);
-  window.setTimeout(pinUnmovedBelowTopbar, 1100);
+  const feedSpec = SPECS.find((s) => s.id === "feed");
+  const feedEl = feedSpec && document.querySelector(feedSpec.sel);
+  if (feedEl && !feedEl.classList.contains("is-collapsed")) {
+    pinFeedToRight(feedEl, feedSpec);
+  }
+  packDefaultLeftStack();
+  window.setTimeout(() => {
+    pinUnmovedBelowTopbar();
+    packDefaultLeftStack();
+  }, 200);
+  window.setTimeout(() => {
+    pinUnmovedBelowTopbar();
+    if (feedEl && !feedEl.classList.contains("is-collapsed")) pinFeedToRight(feedEl, feedSpec);
+    packDefaultLeftStack();
+    packEdge("right");
+    packEdge("left");
+  }, 1100);
   requestAnimationFrame(() => {
     for (const edge of ["left", "right", "top", "bottom"]) packEdge(edge);
   });
