@@ -1,0 +1,95 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "refactor/**", "feat/**"]
+  pull_request:
+
+jobs:
+  backend:
+    name: backend · unit + integration (PostGIS)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:17-3.5
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: crisis
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+    env:
+      PYTHONUTF8: "1"
+      DATABASE_URL: postgresql+psycopg://postgres:ci@127.0.0.1:5432/crisis
+      HTTP_PROXY_MODE: direct
+      LOG_DIR: /tmp/crisis-logs
+      PGPASSWORD: ci
+      PGHOST: 127.0.0.1
+      PGUSER: postgres
+      PGDATABASE: crisis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install -r app/requirements.txt
+      - name: schema + migrations
+        run: |
+          sudo apt-get install -y -q postgresql-client >/dev/null
+          psql -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS postgis;"
+          psql -v ON_ERROR_STOP=1 -f setup/05-schema.sql
+          PG_BIN=/usr/bin bash setup/migrate.sh
+      - name: unit tests
+        working-directory: app
+        run: python -m tests.run_unit
+      - name: integration · alerts / lifecycle / api contract
+        working-directory: app
+        run: |
+          python -m tests.integration_alerts
+          python -m tests.integration_lifecycle
+          python -m tests.integration_api
+
+  frontend:
+    name: frontend · check + unit + build (no CDN)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npx -y npm@12.0.2 ci --allow-remote=all
+      - run: ./node_modules/.bin/vp check
+      - run: ./node_modules/.bin/vp test run
+      - run: ./node_modules/.bin/vp build
+      - name: dist has no CDN references
+        run: |
+          ! grep -rE "unpkg\.com|fonts\.googleapis|fonts\.gstatic" dist/
+
+  e2e:
+    name: e2e · playwright (fixtures mode)
+    runs-on: ubuntu-latest
+    needs: frontend
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npx -y npm@12.0.2 ci --allow-remote=all
+      - run: ./node_modules/.bin/playwright install --with-deps chromium
+      - run: ./node_modules/.bin/playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-traces, path: web/test-results, retention-days: 7 }
+
+  audit:
+    name: dependency audit (report only)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.13" }
+      - run: pip install pip-audit && pip-audit -r app/requirements.txt || true
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: cd web && npm audit --omit=dev || true

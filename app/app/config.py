@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     # 启动后多少秒才开始评估告警（让回补/首采先落库）
     alert_startup_grace_seconds: int = 120
 
+    # 公网隧道访问令牌：非空时 /api /ws 需 X-Access-Token；本机 127.0.0.1 默认放行
+    access_token: str = ""
+    access_token_enforce_local: bool = False
+
     # 数据保留（天）
     retention_raw_days: int = 90
     retention_alert_days: int = 180

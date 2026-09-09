@@ -32,11 +32,13 @@ export default defineConfig({
       "/api": {
         target: "http://127.0.0.1:8001",
         changeOrigin: true,
+        xfwd: true, // 带 X-Forwarded-For：后端据此区分"本机"与"经隧道进来的"
       },
       "/ws": {
         target: "ws://127.0.0.1:8001",
         ws: true,
         changeOrigin: true,
+        xfwd: true,
       },
       // 后端 static 也有 /data；开发时优先 Vite public/data（含地名中英对照等）
       "/data": {

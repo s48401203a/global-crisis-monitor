@@ -21,6 +21,10 @@ _loop: asyncio.AbstractEventLoop | None = None
 
 async def _serve(websocket: WebSocket) -> None:
     global _loop
+    from .access import token_ok
+    if not token_ok(websocket):  # WebSocket 与 Request 同样有 headers/query_params
+        await websocket.close(code=4401)
+        return
     await websocket.accept()
     _clients.add(websocket)
     _loop = asyncio.get_running_loop()

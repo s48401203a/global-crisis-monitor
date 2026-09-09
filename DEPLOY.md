@@ -23,7 +23,7 @@ bash setup/macos-deploy.sh
 ./start.sh --open
 ```
 
-macOS 入口 / URLs：`http://127.0.0.1:5180`（Vite HMR）、`http://127.0.0.1:8001/api/health`。  
+macOS 入口 / URLs：`http://127.0.0.1:5180`（Vite HMR）、`http://127.0.0.1:8001/api/health`。开机自启与备份：`bash setup/install-launchd.sh`；一键验收：`bash scripts/verify.sh`。  
 Windows 脚本仍默认 5173 / 8000。可用环境变量覆盖。 / Windows scripts still default to 5173 / 8000.
 
 出站代理：`app/.env` 的 `HTTP_PROXY_MODE=env|direct|url`。环境里若残留失效代理，所有源会静默失败；`/api/health` 的 `proxy` 与 `pipeline_status` 字段可用来确认。

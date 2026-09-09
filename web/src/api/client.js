@@ -2,16 +2,53 @@
 import { markBreakingBlink } from "../breaking.js";
 import { featureStore } from "../constants.js";
 import { sourceLabel } from "../grade.js";
-import { L } from "../i18n/index.js";
+import { L, getLang } from "../i18n/index.js";
 import { map } from "../map/instance.js";
 import { isTypeEnabled } from "../panels/index.js";
 import { applyFeatures, selectedHours } from "../pipeline.js";
 import { state } from "../state.js";
 import { escapeHtml, fmtAge } from "../util/format.js";
 
+/* ========== 访问令牌（隧道模式）：401 时提示输入，存 sessionStorage，随请求带 X-Access-Token ========== */
+let tokenPrompted = false;
+
+function accessToken() {
+  try {
+    return sessionStorage.getItem("crisis_access_token") || "";
+  } catch {
+    return "";
+  }
+}
+
+async function apiFetch(url, init = {}) {
+  const headers = new Headers(init.headers || {});
+  const tok = accessToken();
+  if (tok) headers.set("X-Access-Token", tok);
+  const r = await fetch(url, { ...init, headers });
+  if (r.status === 401 && !tokenPrompted) {
+    tokenPrompted = true;
+    const entered = window.prompt(
+      getLang() === "en"
+        ? "This instance requires an access token (ACCESS_TOKEN):"
+        : "此实例需要访问令牌（ACCESS_TOKEN）：",
+      "",
+    );
+    if (entered) {
+      try {
+        sessionStorage.setItem("crisis_access_token", entered.trim());
+      } catch {
+        /* ignore */
+      }
+      tokenPrompted = false;
+      return apiFetch(url, init);
+    }
+  }
+  return r;
+}
+
 async function loadTheaters() {
   try {
-    const r = await fetch("/api/theaters", { cache: "no-store" });
+    const r = await apiFetch("/api/theaters", { cache: "no-store" });
     if (!r.ok) throw new Error("theaters " + r.status);
     const fc = await r.json();
     state.theaterFeatures = Array.isArray(fc.features) ? fc.features : [];
@@ -82,7 +119,7 @@ async function refreshBody({ full = false } = {}) {
     const url = needFull
       ? `/api/events?hours=${hours}&limit=5000&fields=summary`
       : `/api/events?hours=${hours}&limit=5000&fields=summary&since=${encodeURIComponent(state.storeSince)}`;
-    const er = await fetch(url, { cache: "no-store" });
+    const er = await apiFetch(url, { cache: "no-store" });
     if (!er.ok) throw new Error("events " + er.status);
     const fc = await er.json();
     if (!fc || !Array.isArray(fc.features)) throw new Error("invalid events payload");
@@ -177,7 +214,7 @@ function renderHealth(h) {
 
 async function loadHealth() {
   try {
-    const r = await fetch("/api/health", { cache: "no-store" });
+    const r = await apiFetch("/api/health", { cache: "no-store" });
     if (!r.ok) throw new Error("health " + r.status);
     renderHealth(await r.json());
   } catch {

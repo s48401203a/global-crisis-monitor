@@ -8,7 +8,7 @@
 4. [docs/项目评审与改造方案-fable-5.1.html](./docs/项目评审与改造方案-fable-5.1.html)：2026-09 评审结论、问题编号（D-01…）与五阶段改造路线；执行 Phase N 前先读第 04/05 章。
 5. 修改 `web/` 前再读 `web/AGENTS.md`（Vite+ 操作约定）。
 
-历史文档（`项目进度记录.md`、`交付报告-grok-4.5.md`、`docs/终审报告-grok-4.5.html`）为 2026-08 Windows 阶段记录，只作溯源，不再是操作依据。
+历史文档已归档到 `docs/archive/`（2026-08 Windows 阶段记录），只作溯源；架构决策见 `docs/adr/`；阶段变更见 `CHANGELOG.md`。
 
 ## 项目结构
 
@@ -31,7 +31,14 @@ cd web && npx vp check && npx vp test && npx vp build              # 前端格�
 cd web && ./node_modules/.bin/playwright test                      # e2e（fixtures 模式，不依赖后端）
 ```
 
+bash scripts/verify.sh            # 一键验收：单测 + 集成 + 前端 check/test/build + e2e + 运行面
+bash setup/install-launchd.sh     # 开机自启 API（launchd）+ 每日 03:17 备份；--uninstall 卸载
+./backup.sh                       # 手动备份到 backups/（保留 7 份）；--restore <dump> 恢复
+```
+
 Windows 见 DEPLOY.md「Windows」小节（`启动.bat` / `停止.bat`，默认 5173 / 8000）。
+
+公网隧道（`公网预览.sh`）必须先在 `app/.env` 设置 `ACCESS_TOKEN`（`openssl rand -hex 16`）；隧道映射 8001 的构建产物，不再暴露 Vite 开发服务器。
 
 ## 不可违反的约束
 
@@ -46,4 +53,4 @@ Windows 见 DEPLOY.md「Windows」小节（`启动.bat` / `停止.bat`，默认 
 
 ## 当前优先事项
 
-按改造方案分阶段推进：Phase 0 止血（已完成）→ Phase 1 数据语义与告警 → Phase 2 API v2 → Phase 3 前端拆分 → Phase 4 工程化。每阶段独立分支/PR，合并前跑方案中写明的可失败验证。
+Phase 0–4 已于 2026-09-09 完成（见 CHANGELOG.md）。剩余为 Phase 5 可选增强：瓦片缓存代理/离线底图、Webhook/Telegram 告警通道、ACLED 等权威冲突源、水文源、历史回放。任何改动合并前跑 `bash scripts/verify.sh`。

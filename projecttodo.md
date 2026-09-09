@@ -14,6 +14,16 @@
 
 ---
 
+### 2026-09-09 【Claude Fable 5.1】 Phase 4 工程化与运维
+
+- CI：`.github/workflows/ci.yml` 四条作业（后端单测+PostGIS 集成；前端 check/test/build 并断言 dist 无 CDN；Playwright e2e；依赖审计只报告）
+- launchd：`service/com.crisis.api.plist`（API 8001，KeepAlive 仅异常退出时重启）+ `service/com.crisis.backup.plist`（每日 03:17）；`setup/install-launchd.sh` 安装/卸载，本机已安装并验证 8001 由 launchd 托管
+- 备份：`backup.sh`（pg_dump 自定义格式、`pg_restore --list` 校验、保留 KEEP 份、`--restore`）；本机已生成 `backups/crisis-*.dump`
+- 隧道令牌：`ACCESS_TOKEN` 非空时 `/api` `/ws` 需 `X-Access-Token`/`?token=`；本机判定按对端回环 + 无 `CF-Connecting-IP`/公网 `X-Forwarded-For`（Vite 代理开 `xfwd`）；前端 401 时提示输入令牌；`公网预览.sh` 改映射 8001 且无令牌拒绝开放（`ALLOW_OPEN_TUNNEL=1` 可强制）
+- 文档：`scripts/verify.sh` 一键验收；`CHANGELOG.md`；`docs/adr/0001–0003`；`项目进度记录.md`/`交付报告`/`终审报告` 归档到 `docs/archive/`；README/AGENTS/DEPLOY 补运维与安全口径
+- 验证：`tests.integration_access` 9/9；`scripts/verify.sh --quick` 通过
+- 未做：GitHub Actions 未实际在远端跑过（未 push）；`stop.sh` 未接管 launchd（停 8001 后由 `launchctl kickstart` 或重新登录恢复）
+
 ### 2026-09-09 【Claude Fable 5.1】 Phase 3 前端模块化与自包含
 
 - `main.js` 4834 行 → 组合根 ≈650 行 + 17 个模块：`state.js`（单一 store）、`constants.js`、`storage.js`（localStorage 单键 `crisis.v3`，自动迁移旧键）、`i18n/`、`api/client.js`、`pipeline.js`、`grade.js`/`brief.js`/`headline.js`、`breaking.js`、`panels/`、`popup/`、`tour/`、`map/{instance,projection,cosmos,labels,effects}.js`、`util/{format,geo,timing}.js`

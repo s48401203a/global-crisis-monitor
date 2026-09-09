@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.crisis.api</string>
+  <!-- 由 setup/install-launchd.sh 把 __ROOT__ 替换为仓库绝对路径 -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__ROOT__/app/.venv/bin/python</string>
+    <string>-m</string><string>uvicorn</string><string>app.main:app</string>
+    <string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8001</string>
+    <string>--workers</string><string>1</string>
+  </array>
+  <key>WorkingDirectory</key><string>__ROOT__/app</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONUTF8</key><string>1</string>
+    <key>PYTHONUNBUFFERED</key><string>1</string>
+    <key>PATH</key><string>/opt/homebrew/opt/postgresql@17/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key>
+  <dict><key>SuccessfulExit</key><false/></dict>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>__ROOT__/logs/launchd-api.out.log</string>
+  <key>StandardErrorPath</key><string>__ROOT__/logs/launchd-api.err.log</string>
+</dict>
+</plist>

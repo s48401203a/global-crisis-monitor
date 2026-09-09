@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
-# 将本机 Vite（默认 5180）映射到 Cloudflare 快速隧道。
+# 将本机 API 8001（含构建产物）映射到 Cloudflare 快速隧道；需 ACCESS_TOKEN。
 # 用法:
 #   ./公网预览.sh
-#   VITE_PORT=5180 ./公网预览.sh
+#   API_PORT=8001 ./公网预览.sh
 # 关掉隧道: ./stop.sh  或  kill "$(cat logs/cloudflared.pid)"
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$ROOT/logs"
-VITE_PORT="${VITE_PORT:-5180}"
-VITE_URL="http://127.0.0.1:${VITE_PORT}"
+# 默认映射 8001（后端 + 构建产物），不再暴露 Vite 开发服务器（HMR/源码映射不该上公网）
+API_PORT="${API_PORT:-8001}"
+VITE_URL="http://127.0.0.1:${API_PORT}"
+if ! grep -qE '^ACCESS_TOKEN=.{8,}' "$ROOT/app/.env" 2>/dev/null; then
+  echo "警告：app/.env 未设置 ACCESS_TOKEN，隧道期间任何人可读取全部事件。" >&2
+  echo "      生成：openssl rand -hex 16 → 写入 ACCESS_TOKEN= 并重启 API（./stop.sh && ./start.sh）。" >&2
+  if [[ "${ALLOW_OPEN_TUNNEL:-0}" != "1" ]]; then
+    echo "      如确要无鉴权暴露，设置 ALLOW_OPEN_TUNNEL=1 再运行。" >&2; exit 1
+  fi
+fi
 LOG="$LOG_DIR/cloudflared.out.log"
 PIDFILE="$LOG_DIR/cloudflared.pid"
 URLFILE="$LOG_DIR/public-url.txt"
@@ -48,7 +56,7 @@ for _ in $(seq 1 50); do
   if [[ -n "$url" ]]; then
     printf '%s\n' "$url" > "$URLFILE"
     echo "公网地址: $url"
-    echo "本机关机、断网或 ./stop.sh 后失效。演示无鉴权，勿广泛传播。"
+    echo "本机关机、断网或 ./stop.sh 后失效。访问需 ?token=<ACCESS_TOKEN> 或 X-Access-Token。"
     exit 0
   fi
   if ! kill -0 "$(tr -d ' \n' < "$PIDFILE")" 2>/dev/null; then

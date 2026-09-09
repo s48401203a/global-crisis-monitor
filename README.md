@@ -115,11 +115,20 @@ API（v2，均为只读 GET；列表支持 gzip 与 ETag）：
 cd app && PYTHONUTF8=1 .venv/bin/python -m tests.run_unit
 ```
 
+### 运维（macOS）
+
+```bash
+bash scripts/verify.sh            # 一键验收（单测 / 集成 / 前端 / e2e / 运行面）
+bash setup/install-launchd.sh     # 开机自启 API + 每日 03:17 pg_dump（--uninstall 卸载）
+./backup.sh                       # 手动备份；./backup.sh --restore backups/xxx.dump 恢复
+```
+
 ### 安全
 
 - 仓库不含 `.env`、`secrets/`、`pgdata/`、日志
 - 不要把数据库密码写进 issue / PR
 - 若密码曾出现在聊天里，请在本机轮换 Postgres 密码
+- 公网隧道前在 `app/.env` 设置 `ACCESS_TOKEN`：非本机请求必须带 `X-Access-Token`（或 `?token=`）；`公网预览.sh` 会拒绝无令牌开放
 
 ### 现状
 
@@ -231,11 +240,20 @@ Unit tests (no pytest):
 cd app && PYTHONUTF8=1 .venv/bin/python -m tests.run_unit
 ```
 
+### Operations (macOS)
+
+```bash
+bash scripts/verify.sh            # one-shot acceptance (unit / integration / frontend / e2e / runtime)
+bash setup/install-launchd.sh     # login item for the API + daily 03:17 pg_dump (--uninstall to remove)
+./backup.sh                       # manual backup; ./backup.sh --restore backups/xxx.dump
+```
+
 ### Security
 
 - `.env`, `secrets/`, `pgdata/`, and logs are not in git
 - Do not paste database passwords into issues or PRs
 - Rotate the Postgres password if it ever appeared in chat
+- Before exposing a tunnel set `ACCESS_TOKEN` in `app/.env`: non-local requests must send `X-Access-Token` (or `?token=`); `公网预览.sh` refuses to open an unauthenticated tunnel
 
 ### Status
 
