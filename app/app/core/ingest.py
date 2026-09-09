@@ -10,8 +10,17 @@ from .dedupe import find_matching_event, should_take_over
 log = logging.getLogger(__name__)
 
 
+# 最近一次 ingest 变更的事件 id（供采集器一轮结束后广播 events.changed）
+_last_changed_ids: list[int] = []
+
+
+def last_changed_ids() -> list[int]:
+    return list(_last_changed_ids)
+
+
 def ingest_events(events: list[NormalizedEvent]) -> int:
     """归一化事件 → 去重 → upsert。返回处理条数。"""
+    _last_changed_ids.clear()
     if not events:
         return 0
 
@@ -28,6 +37,7 @@ def ingest_events(events: list[NormalizedEvent]) -> int:
                         eid = _insert_event(s, ev, sev)
                     else:
                         _update_event(s, eid, ev, sev)
+                    _last_changed_ids.append(int(eid))
 
                     # 红线:必须 upsert。事件会被修订,USGS 初报 M6.2
                     # 可能两小时后改为 M6.8,纯 INSERT 会产生重复记录。
@@ -79,14 +89,19 @@ def _insert_event(s, ev: NormalizedEvent, sev: float) -> int:
     }).fetchone()
     eid = row[0]
 
-    # 空间连接得出所属国家,供按国家聚合统计
-    s.execute(text("""
-        UPDATE event SET country_iso3 = (
-            SELECT iso3 FROM country
-             WHERE ST_Intersects(geom, (SELECT centroid FROM event WHERE id = :eid))
-             LIMIT 1)
-         WHERE id = :eid
-    """), {"eid": eid})
+    # 所属国家：中国官方源直接 CHN；其余先精确落国，落海则取 20 km 内最近国家（沿海预警/近海地震）
+    if ev.source in ("cma", "cenc"):
+        s.execute(text("UPDATE event SET country_iso3 = 'CHN' WHERE id = :eid"), {"eid": eid})
+    else:
+        s.execute(text("""
+            UPDATE event e SET country_iso3 = COALESCE(
+                (SELECT iso3 FROM country
+                  WHERE ST_Intersects(geom, e.centroid) LIMIT 1),
+                (SELECT iso3 FROM country
+                  WHERE ST_DWithin(geom, e.centroid, 20000)
+                  ORDER BY ST_Distance(geom, e.centroid) LIMIT 1))
+             WHERE e.id = :eid
+        """), {"eid": eid})
     return eid
 
 

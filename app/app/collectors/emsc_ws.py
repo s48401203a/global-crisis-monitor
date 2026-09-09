@@ -38,6 +38,17 @@ def _to_event(msg: dict) -> NormalizedEvent | None:
         return None
 
 
+def _publish() -> None:
+    try:
+        from ..api.ws import broadcast
+        from ..core.ingest import last_changed_ids
+        ids = last_changed_ids()
+        if ids:
+            broadcast("events.changed", {"source": SOURCE, "count": len(ids), "ids": ids})
+    except Exception as e:
+        log.debug("[emsc] 广播失败: %r", e)
+
+
 def _safe(fn, *a):
     try:
         fn(*a)
@@ -68,6 +79,7 @@ async def _listen() -> None:
                     if ev:
                         # action 为 update 时,ingest 内部按 upsert 处理修订
                         ingest_events([ev])
+                        _publish()
                     _safe(touch_success, SOURCE)
         except Exception as e:
             _safe(touch_failure, SOURCE, repr(e))

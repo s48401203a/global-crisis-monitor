@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     # 启动后多少秒才开始评估告警（让回补/首采先落库）
     alert_startup_grace_seconds: int = 120
 
+    # 数据保留（天）
+    retention_raw_days: int = 90
+    retention_alert_days: int = 180
+    retention_deleted_days: int = 30
+    retention_sample_days: int = 400
+
     # 出站代理策略：env | direct | url（见 app/net.py）
     http_proxy_mode: str = "env"
     http_proxy_url: str = ""

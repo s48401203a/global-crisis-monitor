@@ -75,11 +75,23 @@ class BaseCollector(ABC):
             n = ingest_events(events)
             self._touch_success(n)
             log.info("[%s] 采集成功,处理 %d 条", self.name, n)
+            self._publish_changes()
             return n
         except Exception as e:
             self._touch_failure(repr(e))
             log.error("[%s] 采集失败: %r", self.name, e)
             return 0
+
+    def _publish_changes(self) -> None:
+        """一轮入库后广播变更 id，前端据此增量拉取。"""
+        try:
+            from ..api.ws import broadcast
+            from ..core.ingest import last_changed_ids
+            ids = last_changed_ids()
+            if ids:
+                broadcast("events.changed", {"source": self.name, "count": len(ids), "ids": ids[:500]})
+        except Exception as e:
+            log.debug("[%s] 广播变更失败: %r", self.name, e)
 
     def _touch_attempt(self, ts: datetime) -> None:
         touch_attempt(self.name, ts)

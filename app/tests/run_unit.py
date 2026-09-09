@@ -33,6 +33,13 @@ from tests.test_net_sources import (
     test_proxy_mode_url_redacts_credentials,
     test_sources_registry_covers_all_collectors_and_emsc,
 )
+from tests.test_grade import (
+    test_cma_levels_and_flood_ratio,
+    test_conflict_confidence_bands,
+    test_cyclone_and_wildfire_units,
+    test_earthquake_bands_and_tones,
+    test_fmt_num_matches_frontend,
+)
 from tests.test_phase1_collectors import (
     test_alert_armed_clash_requires_daily_count_threshold,
     test_firms_cluster_merges_pixels_and_drops_singletons,
@@ -81,6 +88,11 @@ def main() -> int:
         test_firms_cluster_merges_pixels_and_drops_singletons,
         test_wildfire_severity_uses_frp_when_unit_mw,
         test_alert_armed_clash_requires_daily_count_threshold,
+        test_fmt_num_matches_frontend,
+        test_earthquake_bands_and_tones,
+        test_cyclone_and_wildfire_units,
+        test_cma_levels_and_flood_ratio,
+        test_conflict_confidence_bands,
     ]
     failed = 0
     for fn in tests:

@@ -89,6 +89,18 @@ Copy-Item app\.env.example app\.env
 中文/英文大屏  ◄──  MapLibre  ◄──  FastAPI /api/events
 ```
 
+API（v2，均为只读 GET；列表支持 gzip 与 ETag）：
+
+| 端点 | 说明 |
+|------|------|
+| `/api/events?hours&since&bbox&types&category&min_severity&fields=summary\|full&limit` | GeoJSON 事件；`since=` 返回增量（含 deleted/closed）；`grade` 字段为服务端统一分级 |
+| `/api/events/{id}` | 详情 + observations + alerts |
+| `/api/alerts?since&rule&limit` | 告警历史 |
+| `/api/stats?hours&bbox` | 按类型/国家分桶，聚合信号与真实事件分列 |
+| `/api/theaters` | 战区基线层（编辑维护，不计入事件） |
+| `/api/health` · `/api/meta` | 源健康与 `pipeline_status`；类型/来源字典 |
+| `ws://…/ws` | 主题消息：`alert` · `events.changed` · `pipeline.status` |
+
 | 路径 | 说明 |
 |------|------|
 | `app/` | FastAPI、采集器、入库与严重度 |
@@ -192,6 +204,18 @@ Public APIs  ──►  Collectors (APScheduler)  ──►  PostGIS `event`
                                                     │
 Dashboard     ◄──  MapLibre  ◄──  FastAPI `/api/events`
 ```
+
+API (v2, read-only GET; lists are gzip + ETag):
+
+| Endpoint | Role |
+|------|------|
+| `/api/events?hours&since&bbox&types&category&min_severity&fields=summary\|full&limit` | GeoJSON events; `since=` returns deltas incl. deleted/closed; `grade` is the server-side grading |
+| `/api/events/{id}` | Detail + observations + alerts |
+| `/api/alerts?since&rule&limit` | Alert history |
+| `/api/stats?hours&bbox` | Buckets by type/country; aggregates split from real events |
+| `/api/theaters` | Editorial conflict theaters (not events) |
+| `/api/health` · `/api/meta` | Source health with `pipeline_status`; type/source dictionary |
+| `ws://…/ws` | Topics: `alert` · `events.changed` · `pipeline.status` |
 
 | Path | Role |
 |------|------|

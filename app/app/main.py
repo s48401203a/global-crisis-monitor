@@ -12,13 +12,14 @@ truststore.inject_into_ssl()
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings, REPO_ROOT
 from .net import effective_proxy_for_log
 from .logging_setup import setup_logging
 from .log_retention import run_log_retention
-from .api import routes_events, routes_health, routes_theaters, ws
+from .api import routes_alerts, routes_events, routes_health, routes_meta, routes_stats, routes_theaters, ws
 from .collectors.usgs import UsgsCollector
 from .collectors.gdacs import GdacsCollector
 from .collectors.eonet import EonetCollector
@@ -30,6 +31,7 @@ from .collectors.cma_alert import CmaAlertCollector
 from .collectors.cenc import CencCollector
 from .collectors.emsc_ws import start_emsc_listener
 from .core.alerts import evaluate_alerts
+from .core.lifecycle import close_stale_events, run_retention
 
 setup_logging()
 log = logging.getLogger(__name__)
@@ -103,6 +105,10 @@ def _register_jobs() -> None:
         replace_existing=True,
         next_run_time=_soon(120),
     )
+    scheduler.add_job(close_stale_events, "interval", minutes=5, id="lifecycle",
+                      replace_existing=True, next_run_time=_soon(300))
+    scheduler.add_job(run_retention, "interval", hours=24, id="retention",
+                      replace_existing=True, next_run_time=_soon(600))
 
     # USGS 停机回补改为一次性 job，避免堵住 lifespan 启动
     # SQLAlchemyJobStore 不能序列化 lambda，必须用模块级可引用函数
@@ -163,12 +169,17 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title="全球综合危机监测中心",
     description="中文默认 · 公开数据聚合 · 本地演示系统",
-    version="1.0",
+    version="2.0",
     lifespan=lifespan,
 )
+# 事件列表 JSON 高度重复，gzip 约 8–10×；1 KB 以下不压
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.include_router(routes_events.router)
 app.include_router(routes_health.router)
 app.include_router(routes_theaters.router)
+app.include_router(routes_alerts.router)
+app.include_router(routes_stats.router)
+app.include_router(routes_meta.router)
 app.include_router(ws.router)
 
 _front = _frontend_dir()

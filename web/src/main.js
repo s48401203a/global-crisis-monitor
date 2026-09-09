@@ -942,6 +942,7 @@ function isBreakingAlert(f) {
   const p = (f && f.properties) || f || {};
   if (isMinorCmaAlert(p)) return false;
   if (p.type === "war") return false;
+  if (p.status === "closed") return false;
   if (p.is_aggregate || parseMetrics(p).aggregate) return false;
   const coords = f && f.geometry && f.geometry.coordinates;
   const lon = coords ? Number(coords[0]) : Number(p._lon);
@@ -1211,6 +1212,11 @@ function fmtNum(n) {
  * 返回 { text, tone } tone: green|yellow|orange|red|neutral
  */
 function realGrade(p) {
+  // 服务端已统一分级（/api/events grade 字段）；本地实现仅作夹具/旧数据兜底
+  const g = p && p.grade;
+  if (g && typeof g === "object" && g.tone) {
+    return { text: uiLang === "en" ? g.en || g.zh || "" : g.zh || g.en || "", tone: g.tone };
+  }
   const t = p.type;
   const met = parseMetrics(p);
   const mag =
@@ -2872,7 +2878,10 @@ map.on("load", async () => {
   setInterval(loadHealth, 30000);
   // 每 5 秒重算闪烁态：新灾害闪完后恢复静态类型色点
   setInterval(() => {
-    if (lastFeatures.length) applyFeatures(lastFeatures);
+    // 只在有闪烁态需要过期时才全量重算，避免无谓重渲染
+    if (lastFeatures.length && (blinkStartedAt.size || breakingBlinkUntil.size)) {
+      applyFeatures(lastFeatures);
+    }
   }, 5000);
   loadHealth();
   connectWS();
@@ -3678,7 +3687,7 @@ function bindTimeRangeButtons() {
         b.classList.toggle("active", on);
         b.setAttribute("aria-selected", on ? "true" : "false");
       });
-      refresh();
+      refresh({ full: true });
     });
   });
 }
@@ -3733,7 +3742,45 @@ function theaterPopupHtml(p) {
     </div>`;
 }
 
-async function refresh() {
+/* ========== 事件拉取：首轮全量（summary），之后按 since 增量合并 ========== */
+const featureStore = new Map(); // id → Feature
+let storeHours = null; // 当前 store 对应的时间窗
+let storeSince = null; // 下次增量的 since（服务端 server_time）
+let incrementalTimer = 0;
+
+function storeToArray() {
+  return [...featureStore.values()];
+}
+
+function mergeIncremental(features) {
+  let changed = 0;
+  for (const f of features) {
+    const p = f.properties || {};
+    if (p.id == null) continue;
+    if (p.status === "deleted") {
+      if (featureStore.delete(p.id)) changed++;
+      continue;
+    }
+    featureStore.set(p.id, f);
+    changed++;
+  }
+  return changed;
+}
+
+let refreshInFlight = null;
+
+async function refresh({ full = false } = {}) {
+  // 全量拉取进行中时合并并发调用（启动阶段多处触发），避免重复 2 次全量
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = refreshBody({ full });
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
+}
+
+async function refreshBody({ full = false } = {}) {
   const hours = selectedHours();
   try {
     // 开发模式：?fixtures=test 时加载本地测试夹具（手测台风轨迹/洪水箭头等 DB 无数据的路径）
@@ -3747,29 +3794,36 @@ async function refresh() {
       setLivePill(true);
       return;
     }
-    // 健康检查 + 事件并行，任一失败才判连接异常
-    const [hr, er] = await Promise.all([
-      fetch(`/api/health`, { cache: "no-store" }),
-      fetch(`/api/events?hours=${hours}&limit=5000`, { cache: "no-store" }),
-    ]);
-    if (!hr.ok && !er.ok) throw new Error(`health ${hr.status} events ${er.status}`);
+    const needFull = full || storeHours !== hours || !storeSince;
+    const url = needFull
+      ? `/api/events?hours=${hours}&limit=5000&fields=summary`
+      : `/api/events?hours=${hours}&limit=5000&fields=summary&since=${encodeURIComponent(storeSince)}`;
+    const er = await fetch(url, { cache: "no-store" });
     if (!er.ok) throw new Error("events " + er.status);
     const fc = await er.json();
     if (!fc || !Array.isArray(fc.features)) throw new Error("invalid events payload");
-    lastFeatures = fc.features;
-    applyFeatures(lastFeatures);
-    // 同步健康面板
-    if (hr.ok) {
-      try {
-        const h = await hr.json();
-        renderHealth(h);
-      } catch (_) {}
+    if (needFull) {
+      featureStore.clear();
+      for (const f of fc.features)
+        if (f.properties?.id != null) featureStore.set(f.properties.id, f);
+      storeHours = hours;
+    } else {
+      mergeIncremental(fc.features);
     }
+    if (fc.meta?.server_time) storeSince = fc.meta.server_time;
+    lastFeatures = storeToArray();
+    applyFeatures(lastFeatures);
     setLivePill(true);
   } catch (e) {
     console.warn("refresh failed", e);
     setLivePill(false);
   }
+}
+
+/** WS 通知后的增量刷新：合并 1.2 秒内的多次通知 */
+function scheduleIncrementalRefresh() {
+  clearTimeout(incrementalTimer);
+  incrementalTimer = setTimeout(() => refresh(), 1200);
 }
 
 /** 状态 pill：保持横向结构，避免覆盖 data-i18n 后布局错乱 */
@@ -4543,7 +4597,7 @@ function renderFeed(feats, liveCount) {
       const grade = realGrade(p);
       const typeStyle = typeTextStyle(p);
       return `
-      <div class="item ${p.category}${live ? " live" : ""}${active ? " tour-active" : ""}"
+      <div class="item ${p.category}${live ? " live" : ""}${active ? " tour-active" : ""}${p.status === "closed" ? " closed" : ""}"
            data-id="${p.id}"
            style="animation-delay:${Math.min(i, 12) * 0.04}s;--type-color:${tc}"
            onclick="tourJumpToId(${JSON.stringify(p.id)})">
@@ -4928,7 +4982,7 @@ function showToast(title, text) {
 function connectWS() {
   try {
     const ws = new WebSocket(
-      `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/alerts`,
+      `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`,
     );
     ws.onmessage = (e) => {
       let d = null;
@@ -4937,11 +4991,18 @@ function connectWS() {
       } catch {
         d = null;
       }
-      if (d && d.event_id != null) {
-        markBreakingBlink(d.event_id);
+      if (!d) return;
+      const topic = d.topic || (d.event_id != null ? "alert" : "");
+      if (topic === "alert") {
+        const id = d.event_id ?? d.payload?.event_id;
+        if (id != null) markBreakingBlink(id);
+        scheduleIncrementalRefresh();
+        loadHealth();
+      } else if (topic === "events.changed") {
+        scheduleIncrementalRefresh();
+      } else if (topic === "pipeline.status") {
+        loadHealth();
       }
-      refresh();
-      loadHealth();
     };
     ws.onopen = () => {
       try {

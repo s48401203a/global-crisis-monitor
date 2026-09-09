@@ -14,6 +14,17 @@
 
 ---
 
+### 2026-09-09 【Claude Fable 5.1】 Phase 2 API v2 与增量推送
+
+- `/api/events` v2：`since`（含 deleted/closed）、`bbox`、`types`、`fields=summary|full`、ETag/304、gzip（全年 summary 线上 179 KB，原 2.36 MB）；`grade{band,tone,zh,en}` 服务端统一分级（`core/grade.py`，前端 `realGrade` 优先用之）
+- 新端点：`/api/events/{id}`、`/api/alerts`、`/api/stats`（聚合信号与真实事件分列）、`/api/meta`
+- WS 改主题消息 `/ws`：`alert`（兼容旧顶层 event_id）、`events.changed`（采集一轮后广播，前端 1.2 s 去抖后 `since` 增量拉取）、`pipeline.status`
+- 生命周期 `core/lifecycle.py`：EONET/GDACS/CMA 连续 3 轮缺席且源健康 → `closed`（前端灰显、不触发突发）；保留任务：raw 90 天清空、alert 180 天、deleted 30 天、样本 400 天
+- 国家归属：CMA/CENC 直写 CHN；其余落海时取 20 km 内最近国家
+- 前端：featureStore + since 增量合并、时间窗切换才全量；5 s 重渲染仅在有闪烁态时执行；refresh 并发合并
+- 验证：单测 35/35；`integration_api` 25/25；`integration_alerts` 5/5；`integration_lifecycle` 3/3；Playwright：首轮全量→后续 `since=`、切周全量、弹窗等级来自服务端并随语言切换、WS 收到 `events.changed`
+- 未做：告警回看面板 UI（Phase 3 面板模块化时一起做）
+
 ### 2026-09-09 【Claude Fable 5.1】 Phase 0 止血 + Phase 1 数据语义与告警
 
 - **Phase 0**（`b9a40c9`）：`app/net.py` 代理策略（`HTTP_PROXY_MODE=env|direct|url`）；`core/sources.py` 源注册表；`/api/health` 增 `pipeline_status`/`enabled`/`warnings`，前端顶栏多源异常红显；EMSC 写健康表；全部任务错峰首采；dist 缺失挂占位页；`start.sh` 按 mtime 重建 dist；`vp check` 通过（数据文件排除、typeCheck 关）；删除 `app/app/static/index.html`、`web/src/style.css`、重复 schema；一次性/Windows 脚本归入 `setup/oneoff/`、`setup/windows/`；AGENTS/README/DEPLOY/PR 模板口径统一
