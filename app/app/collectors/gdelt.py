@@ -13,7 +13,6 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
 from sqlalchemy import text
 
 from .base import BaseCollector
@@ -87,7 +86,9 @@ class GdeltCollector(BaseCollector):
 
     def _fetch_export_rows(self) -> list[list[str]]:
         # lastupdate.txt 首行指向最新 export.CSV.zip
-        meta = httpx.get(LASTUPDATE, timeout=30, follow_redirects=True)
+        from ..net import make_client
+        with make_client(timeout=30) as c:
+            meta = c.get(LASTUPDATE)
         meta.raise_for_status()
         export_url = None
         for line in meta.text.splitlines():
@@ -98,7 +99,8 @@ class GdeltCollector(BaseCollector):
         if not export_url:
             raise RuntimeError("lastupdate.txt 中无 export.CSV.zip")
 
-        r = httpx.get(export_url, timeout=90, follow_redirects=True)
+        with make_client(timeout=90) as c:
+            r = c.get(export_url)
         r.raise_for_status()
         rows: list[list[str]] = []
         with zipfile.ZipFile(io.BytesIO(r.content)) as zf:

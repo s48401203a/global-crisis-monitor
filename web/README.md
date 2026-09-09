@@ -1,4 +1,5 @@
 # 全球综合危机监测中心 · 前端（Vite+）
+
 # Frontend (Vite+)
 
 仓库总说明 / project overview: [../../README.md](../README.md)
@@ -8,7 +9,7 @@ Start the API first, then the UI. Default **http://127.0.0.1:5180/**; `/api` and
 
 ```powershell
 $env:Path = "$env:USERPROFILE\.vite-plus\bin;" + $env:Path
-cd D:\crisis\web
+cd web   # Windows: cd D:\crisis\web
 vp install
 vp dev --host --open
 ```

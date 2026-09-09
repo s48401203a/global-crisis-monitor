@@ -111,7 +111,7 @@ cd app && PYTHONUTF8=1 .venv/bin/python -m tests.run_unit
 
 ### 现状
 
-本地演示可用。FIRMS 无密钥则关闭。根目录 Vite+ `vp staged` hook 仍缺 `vite.config.ts`，提交时需 `--no-verify`。欢迎 issue / PR。
+本地演示可用。FIRMS 无密钥则关闭。`/api/health` 提供 `pipeline_status`（多源同时异常时顶栏红显）与代理策略（`HTTP_PROXY_MODE=env|direct|url`）。整体改造路线见 [docs/项目评审与改造方案-fable-5.1.html](./docs/项目评审与改造方案-fable-5.1.html)。欢迎 issue / PR。
 
 ### 许可
 
@@ -215,7 +215,7 @@ cd app && PYTHONUTF8=1 .venv/bin/python -m tests.run_unit
 
 ### Status
 
-Usable as a local demo. FIRMS stays off without a map key. The repo-root Vite+ `vp staged` hook still expects a root `vite.config.ts`, so commits use `--no-verify`. Issues and PRs are welcome.
+Usable as a local demo. FIRMS stays off without a map key. `/api/health` reports `pipeline_status` (top bar turns red when several sources fail together) and the outbound proxy policy (`HTTP_PROXY_MODE=env|direct|url`). Refactor roadmap: [docs/项目评审与改造方案-fable-5.1.html](./docs/项目评审与改造方案-fable-5.1.html). Issues and PRs are welcome.
 
 ### License
 

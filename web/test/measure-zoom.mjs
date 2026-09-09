@@ -27,7 +27,7 @@ async function waitIdle(page) {
         };
         m.on("idle", finish);
         setTimeout(finish, 12000); // 12s 兜底：tile 持续加载不触发 idle 时也要继续
-      })
+      }),
   );
 }
 
@@ -48,7 +48,7 @@ async function measure(browser) {
   await page.waitForFunction(
     () => window.__crisisMap && typeof window.__crisisMap.getZoom === "function",
     null,
-    { timeout: 30000 }
+    { timeout: 30000 },
   );
   // 等 fixtures refresh 完成
   await page.waitForTimeout(3000);
@@ -56,9 +56,12 @@ async function measure(browser) {
   const results = [];
   for (let i = 0; i < ROUNDS; i++) {
     // 回到 z4 起点（jumpTo 无动画，瞬间）
-    await page.evaluate(([z, c]) => {
-      window.__crisisMap.jumpTo({ center: c, zoom: z });
-    }, [Z_START, CENTER]);
+    await page.evaluate(
+      ([z, c]) => {
+        window.__crisisMap.jumpTo({ center: c, zoom: z });
+      },
+      [Z_START, CENTER],
+    );
     await waitIdle(page);
     await page.waitForTimeout(800);
 
@@ -67,9 +70,12 @@ async function measure(browser) {
     tileBytes = 0;
 
     const t0 = Date.now();
-    await page.evaluate(([z, c]) => {
-      window.__crisisMap.flyTo({ center: c, zoom: z, duration: 800 });
-    }, [Z_END, CENTER]);
+    await page.evaluate(
+      ([z, c]) => {
+        window.__crisisMap.flyTo({ center: c, zoom: z, duration: 800 });
+      },
+      [Z_END, CENTER],
+    );
     await waitIdle(page);
     const elapsed = Date.now() - t0;
 

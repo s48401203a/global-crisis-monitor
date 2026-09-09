@@ -8,11 +8,15 @@ export default defineConfig({
   staged: {
     "*": "vp check --fix",
   },
-  fmt: {},
+  // 数据文件与夹具不参与格式化：GeoJSON/JSON 数据体积大且由脚本生成
+  fmt: {
+    ignorePatterns: ["public/data/**", "public/test-fixtures.json", "dist/**"],
+  },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: { "vite-plus/prefer-vite-plus-imports": "error" },
-    options: { typeAware: true, typeCheck: true },
+    // 纯 JS 项目：不做 TS 类型检查（无 tsconfig，typeCheck 只会报噪音）
+    options: { typeAware: false, typeCheck: false },
   },
   server: {
     host: "127.0.0.1",

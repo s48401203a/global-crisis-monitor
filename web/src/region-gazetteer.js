@@ -7,37 +7,117 @@ const PROVINCES = [
   { label: "北京", names: ["北京", "北京市", "beijing"], bbox: [115.4, 39.4, 117.5, 41.1] },
   { label: "天津", names: ["天津", "天津市", "tianjin"], bbox: [116.7, 38.55, 118.1, 40.25] },
   { label: "河北", names: ["河北", "河北省", "冀", "hebei"], bbox: [113.45, 36.05, 119.85, 42.62] },
-  { label: "山西", names: ["山西", "山西省", "晋", "shanxi"], bbox: [110.23, 34.58, 114.55, 40.73] },
-  { label: "内蒙古", names: ["内蒙古", "内蒙古自治区", "inner mongolia"], bbox: [97.17, 37.4, 126.07, 53.33] },
-  { label: "辽宁", names: ["辽宁", "辽宁省", "辽", "liaoning"], bbox: [118.85, 38.72, 125.78, 43.43] },
+  {
+    label: "山西",
+    names: ["山西", "山西省", "晋", "shanxi"],
+    bbox: [110.23, 34.58, 114.55, 40.73],
+  },
+  {
+    label: "内蒙古",
+    names: ["内蒙古", "内蒙古自治区", "inner mongolia"],
+    bbox: [97.17, 37.4, 126.07, 53.33],
+  },
+  {
+    label: "辽宁",
+    names: ["辽宁", "辽宁省", "辽", "liaoning"],
+    bbox: [118.85, 38.72, 125.78, 43.43],
+  },
   { label: "吉林", names: ["吉林", "吉林省", "jilin"], bbox: [121.63, 40.86, 131.32, 46.3] },
-  { label: "黑龙江", names: ["黑龙江", "黑龙江省", "heilongjiang"], bbox: [121.18, 43.42, 135.09, 53.56] },
+  {
+    label: "黑龙江",
+    names: ["黑龙江", "黑龙江省", "heilongjiang"],
+    bbox: [121.18, 43.42, 135.09, 53.56],
+  },
   { label: "上海", names: ["上海", "上海市", "shanghai"], bbox: [120.85, 30.67, 122.2, 31.88] },
-  { label: "江苏", names: ["江苏", "江苏省", "苏", "jiangsu"], bbox: [116.36, 30.76, 121.95, 35.12] },
-  { label: "浙江", names: ["浙江", "浙江省", "浙", "zhejiang"], bbox: [118.02, 27.14, 122.84, 31.18] },
+  {
+    label: "江苏",
+    names: ["江苏", "江苏省", "苏", "jiangsu"],
+    bbox: [116.36, 30.76, 121.95, 35.12],
+  },
+  {
+    label: "浙江",
+    names: ["浙江", "浙江省", "浙", "zhejiang"],
+    bbox: [118.02, 27.14, 122.84, 31.18],
+  },
   { label: "安徽", names: ["安徽", "安徽省", "皖", "anhui"], bbox: [114.88, 29.41, 119.65, 34.65] },
-  { label: "福建", names: ["福建", "福建省", "闽", "fujian"], bbox: [115.85, 23.53, 120.72, 28.32] },
-  { label: "江西", names: ["江西", "江西省", "赣", "jiangxi"], bbox: [113.57, 24.49, 118.48, 30.08] },
-  { label: "山东", names: ["山东", "山东省", "鲁", "shandong"], bbox: [114.8, 34.38, 122.72, 38.4] },
+  {
+    label: "福建",
+    names: ["福建", "福建省", "闽", "fujian"],
+    bbox: [115.85, 23.53, 120.72, 28.32],
+  },
+  {
+    label: "江西",
+    names: ["江西", "江西省", "赣", "jiangxi"],
+    bbox: [113.57, 24.49, 118.48, 30.08],
+  },
+  {
+    label: "山东",
+    names: ["山东", "山东省", "鲁", "shandong"],
+    bbox: [114.8, 34.38, 122.72, 38.4],
+  },
   { label: "河南", names: ["河南", "河南省", "豫", "henan"], bbox: [110.21, 31.23, 116.65, 36.37] },
   { label: "湖北", names: ["湖北", "湖北省", "鄂", "hubei"], bbox: [108.21, 29.02, 116.13, 33.27] },
   { label: "湖南", names: ["湖南", "湖南省", "湘", "hunan"], bbox: [108.79, 24.64, 114.25, 30.13] },
-  { label: "广东", names: ["广东", "广东省", "粤", "guangdong"], bbox: [109.66, 20.22, 117.32, 25.52] },
-  { label: "广西", names: ["广西", "广西壮族自治区", "桂", "guangxi"], bbox: [104.45, 20.9, 112.06, 26.39] },
+  {
+    label: "广东",
+    names: ["广东", "广东省", "粤", "guangdong"],
+    bbox: [109.66, 20.22, 117.32, 25.52],
+  },
+  {
+    label: "广西",
+    names: ["广西", "广西壮族自治区", "桂", "guangxi"],
+    bbox: [104.45, 20.9, 112.06, 26.39],
+  },
   { label: "海南", names: ["海南", "海南省", "琼", "hainan"], bbox: [108.56, 18.16, 111.05, 20.1] },
   { label: "重庆", names: ["重庆", "重庆市", "chongqing"], bbox: [105.29, 28.16, 110.2, 32.2] },
-  { label: "四川", names: ["四川", "四川省", "川", "蜀", "sichuan"], bbox: [97.35, 26.05, 108.54, 34.32] },
-  { label: "贵州", names: ["贵州", "贵州省", "黔", "guizhou"], bbox: [103.6, 24.62, 109.59, 29.22] },
+  {
+    label: "四川",
+    names: ["四川", "四川省", "川", "蜀", "sichuan"],
+    bbox: [97.35, 26.05, 108.54, 34.32],
+  },
+  {
+    label: "贵州",
+    names: ["贵州", "贵州省", "黔", "guizhou"],
+    bbox: [103.6, 24.62, 109.59, 29.22],
+  },
   { label: "云南", names: ["云南", "云南省", "滇", "yunnan"], bbox: [97.53, 21.14, 106.19, 29.22] },
-  { label: "西藏", names: ["西藏", "西藏自治区", "藏", "tibet", "xizang"], bbox: [78.4, 26.85, 99.11, 36.48] },
-  { label: "陕西", names: ["陕西", "陕西省", "陕", "秦", "shaanxi"], bbox: [105.49, 31.71, 111.24, 39.59] },
-  { label: "甘肃", names: ["甘肃", "甘肃省", "甘", "陇", "gansu"], bbox: [92.34, 32.6, 108.71, 42.79] },
+  {
+    label: "西藏",
+    names: ["西藏", "西藏自治区", "藏", "tibet", "xizang"],
+    bbox: [78.4, 26.85, 99.11, 36.48],
+  },
+  {
+    label: "陕西",
+    names: ["陕西", "陕西省", "陕", "秦", "shaanxi"],
+    bbox: [105.49, 31.71, 111.24, 39.59],
+  },
+  {
+    label: "甘肃",
+    names: ["甘肃", "甘肃省", "甘", "陇", "gansu"],
+    bbox: [92.34, 32.6, 108.71, 42.79],
+  },
   { label: "青海", names: ["青海", "青海省", "青", "qinghai"], bbox: [89.4, 31.6, 103.07, 39.21] },
-  { label: "宁夏", names: ["宁夏", "宁夏回族自治区", "宁", "ningxia"], bbox: [104.17, 35.24, 107.65, 39.38] },
-  { label: "新疆", names: ["新疆", "新疆维吾尔自治区", "xinjiang"], bbox: [73.5, 34.33, 96.39, 49.18] },
+  {
+    label: "宁夏",
+    names: ["宁夏", "宁夏回族自治区", "宁", "ningxia"],
+    bbox: [104.17, 35.24, 107.65, 39.38],
+  },
+  {
+    label: "新疆",
+    names: ["新疆", "新疆维吾尔自治区", "xinjiang"],
+    bbox: [73.5, 34.33, 96.39, 49.18],
+  },
   { label: "台湾", names: ["台湾", "台湾省", "taiwan"], bbox: [119.3, 21.9, 122.0, 25.3] },
-  { label: "香港", names: ["香港", "香港特别行政区", "hong kong", "hongkong"], bbox: [113.82, 22.15, 114.5, 22.56] },
-  { label: "澳门", names: ["澳门", "澳门特别行政区", "macao", "macau"], bbox: [113.52, 22.1, 113.63, 22.22] },
+  {
+    label: "香港",
+    names: ["香港", "香港特别行政区", "hong kong", "hongkong"],
+    bbox: [113.82, 22.15, 114.5, 22.56],
+  },
+  {
+    label: "澳门",
+    names: ["澳门", "澳门特别行政区", "macao", "macau"],
+    bbox: [113.52, 22.1, 113.63, 22.22],
+  },
 ];
 
 /** zh|en|lon|lat|radiusKm */
@@ -525,7 +605,9 @@ function norm(s) {
 }
 
 function nameMatches(names, token) {
-  const t = String(token || "").trim().toLowerCase();
+  const t = String(token || "")
+    .trim()
+    .toLowerCase();
   const n = norm(token);
   if (!t) return false;
   return names.some((name) => {
@@ -540,8 +622,7 @@ function distKm(lon1, lat1, lon2, lat2) {
   const dLat = (lat2 - lat1) * rad;
   const dLon = (lon2 - lon1) * rad;
   const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
   return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
@@ -550,7 +631,10 @@ function allCities() {
 }
 
 function allPlaces() {
-  return CITIES.concat(extraPlaces, PROVINCES.map((p) => ({ ...p, kind: "province" })));
+  return CITIES.concat(
+    extraPlaces,
+    PROVINCES.map((p) => ({ ...p, kind: "province" })),
+  );
 }
 
 export function registerExtraPlaces(items) {

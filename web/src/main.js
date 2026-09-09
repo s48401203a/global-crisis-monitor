@@ -45,7 +45,15 @@ const ZH = {
     cma: "中央气象台预警",
     cenc: "中国地震台网",
   },
-  status: { ok: "正常", error: "异常" },
+  status: { ok: "正常", error: "异常", disabled: "已关闭", pending: "等待首采" },
+  pipeline: {
+    degraded: (n) => `${n} 个数据源异常 · 疑似网络/代理问题`,
+    down: "全部数据源异常 · 请检查网络或代理",
+  },
+  healthWarn: {
+    no_watch_points: "未配置洪水关注点，Open-Meteo 空跑",
+    no_watch_regions: "未配置关注区域，区域告警不会触发",
+  },
   units: {
     M: "震级",
     kts: "节",
@@ -116,7 +124,15 @@ const EN = {
     cma: "CMA weather alerts",
     cenc: "CENC earthquake",
   },
-  status: { ok: "OK", error: "Error" },
+  status: { ok: "OK", error: "Error", disabled: "Off", pending: "Pending" },
+  pipeline: {
+    degraded: (n) => `${n} sources failing · likely network/proxy`,
+    down: "All sources failing · check network or proxy",
+  },
+  healthWarn: {
+    no_watch_points: "No flood watch points; Open-Meteo idle",
+    no_watch_regions: "No watch regions; regional alerts inactive",
+  },
   units: {
     M: "magnitude",
     kts: "kts",
@@ -3619,14 +3635,27 @@ async function refresh() {
 }
 
 /** 状态 pill：保持横向结构，避免覆盖 data-i18n 后布局错乱 */
+let pipelineState = { status: "ok", bad: 0 };
+
 function setLivePill(ok) {
   const el = document.getElementById("livePill");
   if (!el) return;
-  const label = ok ? L().live : L().connErr;
-  el.classList.toggle("is-err", !ok);
-  el.innerHTML = ok
-    ? `<span class="pulse" aria-hidden="true"></span><span class="live-text">${escapeHtml(label)}</span>`
-    : `<span class="pulse" aria-hidden="true" style="background:var(--red);box-shadow:none"></span><span class="live-text">${escapeHtml(label)}</span>`;
+  // 连接正常但采集管道 degraded/down 时，同样红显并说明原因
+  const pipe = pipelineState.status;
+  let label = ok ? L().live : L().connErr;
+  let bad = !ok;
+  if (ok && pipe === "down") {
+    label = L().pipeline.down;
+    bad = true;
+  } else if (ok && pipe === "degraded") {
+    label = L().pipeline.degraded(pipelineState.bad);
+    bad = true;
+  }
+  el.classList.toggle("is-err", bad);
+  el.title = bad ? label : "";
+  el.innerHTML = bad
+    ? `<span class="pulse" aria-hidden="true" style="background:var(--red);box-shadow:none"></span><span class="live-text">${escapeHtml(label)}</span>`
+    : `<span class="pulse" aria-hidden="true"></span><span class="live-text">${escapeHtml(label)}</span>`;
 }
 
 function renderHealth(h) {
@@ -3636,17 +3665,32 @@ function renderHealth(h) {
     body.innerHTML = `<div class="empty">${escapeHtml(L().noSource)}</div>`;
     return;
   }
-  body.innerHTML =
-    h.sources
-      .map(
-        (s, i) => `
-      <div class="h-row" style="animation-delay:${i * 0.05}s">
-        <span class="dot ${s.status === "ok" ? "ok" : "err"}"></span>
+  const prevPipe = pipelineState.status;
+  pipelineState = { status: h.pipeline_status || "ok", bad: h.pipeline_bad_sources || 0 };
+  if (prevPipe !== pipelineState.status) setLivePill(true);
+  const st = L().status;
+  const rowHtml = (s, i) => {
+    const dot = s.status === "ok" ? "ok" : s.status === "error" ? "err" : "off";
+    const tail =
+      s.status === "ok" || s.status === "error" ? fmtAge(s.age_seconds) : st[s.status] || s.status;
+    const tip = [s.status_zh || st[s.status] || "", s.note_zh || "", s.last_error || ""]
+      .filter(Boolean)
+      .join(" · ");
+    return `
+      <div class="h-row h-${dot}" style="animation-delay:${i * 0.05}s" title="${escapeHtml(tip)}">
+        <span class="dot ${dot}"></span>
         <span class="h-name">${escapeHtml(sourceLabel(s.source))}</span>
-        <span class="h-age">${fmtAge(s.age_seconds)}</span>
-      </div>`,
-      )
-      .join("") +
+        <span class="h-age">${escapeHtml(tail)}</span>
+      </div>`;
+  };
+  const warnHtml = (h.warnings || [])
+    .map(
+      (w) => `<div class="h-warn">⚠ ${escapeHtml(L().healthWarn[w.code] || w.zh || w.code)}</div>`,
+    )
+    .join("");
+  body.innerHTML =
+    h.sources.map(rowHtml).join("") +
+    warnHtml +
     `
       <div class="h-total">
         <span>库内事件总量</span>

@@ -34,20 +34,18 @@ class BaseCollector(ABC):
     # ---------- 以下为通用实现,子类无需覆盖 ----------
 
     def http_get(self, url: str, **kw) -> httpx.Response:
-        # truststore 已在 main.py 注入,此处不再处理证书
+        """带重试的 GET；代理/UA/超时由 app.net 统一决定。"""
+        import time
+        from ..net import make_client
+
         headers = kw.pop("headers", None) or {}
-        headers.setdefault(
-            "User-Agent",
-            "CrisisMonitor/1.0 (+local; research; contact=local-admin)",
-        )
         last_err: Exception | None = None
         for attempt in range(4):
             try:
-                with httpx.Client(timeout=self.timeout, follow_redirects=True) as c:
-                    r = c.get(url, headers=headers, **kw)
+                with make_client(timeout=self.timeout, headers=headers) as c:
+                    r = c.get(url, **kw)
                     if r.status_code == 429:
                         # GDELT 等公共 API 限流:指数退避
-                        import time
                         time.sleep(min(2 ** attempt * 3, 45))
                         last_err = httpx.HTTPStatusError(
                             f"429 for {url}", request=r.request, response=r
@@ -57,12 +55,10 @@ class BaseCollector(ABC):
                     return r
             except Exception as e:
                 last_err = e
-                import time
                 time.sleep(min(2 ** attempt, 20))
         if last_err:
             raise last_err
         raise RuntimeError(f"http_get failed for {url}")
-
 
     def run(self) -> int:
         """
@@ -86,28 +82,47 @@ class BaseCollector(ABC):
             return 0
 
     def _touch_attempt(self, ts: datetime) -> None:
-        with get_session() as s:
-            s.execute(text("""
-                INSERT INTO source_health (source, last_attempt_at)
-                VALUES (:src, :ts)
-                ON CONFLICT (source) DO UPDATE SET last_attempt_at = :ts
-            """), {"src": self.name, "ts": ts})
+        touch_attempt(self.name, ts)
 
     def _touch_success(self, n: int) -> None:
-        with get_session() as s:
-            s.execute(text("""
-                UPDATE source_health
-                   SET last_success_at = now(), consecutive_failures = 0,
-                       total_success = total_success + 1, last_error = NULL
-                 WHERE source = :src
-            """), {"src": self.name})
+        touch_success(self.name)
 
     def _touch_failure(self, err: str) -> None:
-        with get_session() as s:
-            s.execute(text("""
-                UPDATE source_health
-                   SET consecutive_failures = consecutive_failures + 1,
-                       total_failure = total_failure + 1,
-                       last_error = :err
-                 WHERE source = :src
-            """), {"src": self.name, "err": err[:500]})
+        touch_failure(self.name, err)
+
+
+# ---------- source_health 写入（采集器与 EMSC WebSocket 共用） ----------
+
+def touch_attempt(source: str, ts: datetime | None = None) -> None:
+    ts = ts or datetime.now(timezone.utc)
+    with get_session() as s:
+        s.execute(text("""
+            INSERT INTO source_health (source, last_attempt_at)
+            VALUES (:src, :ts)
+            ON CONFLICT (source) DO UPDATE SET last_attempt_at = :ts
+        """), {"src": source, "ts": ts})
+
+
+def touch_success(source: str) -> None:
+    with get_session() as s:
+        s.execute(text("""
+            INSERT INTO source_health (source, last_attempt_at, last_success_at,
+                                       consecutive_failures, total_success)
+            VALUES (:src, now(), now(), 0, 1)
+            ON CONFLICT (source) DO UPDATE
+               SET last_success_at = now(), consecutive_failures = 0,
+                   total_success = source_health.total_success + 1, last_error = NULL
+        """), {"src": source})
+
+
+def touch_failure(source: str, err: str) -> None:
+    with get_session() as s:
+        s.execute(text("""
+            INSERT INTO source_health (source, last_attempt_at, consecutive_failures,
+                                       total_failure, last_error)
+            VALUES (:src, now(), 1, 1, :err)
+            ON CONFLICT (source) DO UPDATE
+               SET consecutive_failures = source_health.consecutive_failures + 1,
+                   total_failure = source_health.total_failure + 1,
+                   last_error = :err
+        """), {"src": source, "err": err[:500]})

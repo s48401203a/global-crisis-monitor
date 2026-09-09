@@ -132,6 +132,10 @@ ALERT_EQ_GLOBAL_MAG=5.0
 ALERT_EQ_LOCAL_MAG=4.0
 ALERT_MUTE_MINUTES=30
 ALERT_CONFLICT_MIN_CONFIDENCE=0.7
+
+# 出站代理：env（沿用环境变量）| direct（直连）| url（用 HTTP_PROXY_URL）
+HTTP_PROXY_MODE=env
+HTTP_PROXY_URL=
 ENV
   chmod 600 "$APP/.env"
   echo "[macos-deploy] 已写入 app/.env（已 gitignore）"

@@ -25,6 +25,14 @@ from tests.test_alerts import (
     test_match_rule_rainstorm,
     test_match_rule_war_baseline_skipped,
 )
+from tests.test_net_sources import (
+    test_firms_disabled_without_key,
+    test_pipeline_status_thresholds,
+    test_proxy_mode_direct_ignores_env,
+    test_proxy_mode_env_default_and_invalid_falls_back,
+    test_proxy_mode_url_redacts_credentials,
+    test_sources_registry_covers_all_collectors_and_emsc,
+)
 from tests.test_parse_dt_and_severity import (
     test_eonet_naive_is_utc,
     test_flood_ratio_high_small_river_alertable,
@@ -53,6 +61,12 @@ def main() -> int:
         test_match_rule_eq_china_m4,
         test_match_rule_eq_tiny_skipped,
         test_match_rule_war_baseline_skipped,
+        test_proxy_mode_direct_ignores_env,
+        test_proxy_mode_url_redacts_credentials,
+        test_proxy_mode_env_default_and_invalid_falls_back,
+        test_sources_registry_covers_all_collectors_and_emsc,
+        test_firms_disabled_without_key,
+        test_pipeline_status_thresholds,
     ]
     failed = 0
     for fn in tests:

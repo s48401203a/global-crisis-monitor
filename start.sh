@@ -114,13 +114,27 @@ if [[ ! -d "$WEB/node_modules" ]]; then
   (cd "$WEB" && npx -y npm@12.0.2 install --allow-remote=all)
 fi
 
+# dist 缺失或落后于 src/ public/ index.html 任一文件即重建，避免 8001 服务模式呈现旧界面
+newest_src_mtime() {
+  find "$WEB/src" "$WEB/public" "$WEB/index.html" "$WEB/vite.config.js" -type f -print0 2>/dev/null \
+    | xargs -0 stat -f '%m' 2>/dev/null | sort -n | tail -n 1
+}
+dist_mtime() {
+  stat -f '%m' "$WEB/dist/index.html" 2>/dev/null || echo 0
+}
+need_build=0
 if [[ ! -f "$WEB/dist/index.html" ]]; then
-  log "web/dist 缺失，执行 vp build …"
+  need_build=1; log "web/dist 缺失，执行 build …"
+elif [[ "$(newest_src_mtime)" -gt "$(dist_mtime)" ]]; then
+  need_build=1; log "web/dist 落后于源码，重建 dist …"
+fi
+if [[ "$need_build" -eq 1 ]]; then
   if [[ -x "$WEB/node_modules/.bin/vp" ]]; then
-    (cd "$WEB" && "$WEB/node_modules/.bin/vp" build)
+    (cd "$WEB" && "$WEB/node_modules/.bin/vp" build) || { log "前端 build 失败"; exit 1; }
   else
-    (cd "$WEB" && "$WEB/node_modules/.bin/vite" build)
+    (cd "$WEB" && "$WEB/node_modules/.bin/vite" build) || { log "前端 build 失败"; exit 1; }
   fi
+  touch "$WEB/dist/index.html"
 fi
 
 record_listen_pid() {
