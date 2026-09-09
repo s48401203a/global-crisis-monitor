@@ -31,8 +31,11 @@ const ZH = {
     armed_clash: "武装冲突",
     crisis_signal: "危机信号",
     war: "战争冲突",
+    theater: "战区基线",
   },
   cats: { natural: "自然灾害", conflict: "战争/冲突" },
+  theaterLevel: { high: "高强度战区 / 持续冲突", medium: "中等强度冲突关注区", low: "冲突关注区" },
+  theaterNote: "编辑维护的战区基线层，不计入事件统计与告警",
   sources: {
     usgs: "美国地质调查局",
     emsc: "欧洲地中海地震中心",
@@ -53,6 +56,7 @@ const ZH = {
   healthWarn: {
     no_watch_points: "未配置洪水关注点，Open-Meteo 空跑",
     no_watch_regions: "未配置关注区域，区域告警不会触发",
+    watch_points_off_channel: "部分洪水关注点不在河道格点上，已跳过触发",
   },
   units: {
     M: "震级",
@@ -110,7 +114,14 @@ const EN = {
     armed_clash: "Armed clash",
     crisis_signal: "Crisis signal",
     war: "War / Conflict",
+    theater: "Conflict theater",
   },
+  theaterLevel: {
+    high: "High-intensity war zone",
+    medium: "Medium-intensity conflict zone",
+    low: "Conflict watch area",
+  },
+  theaterNote: "Editorial baseline layer; not counted in event stats or alerts",
   cats: { natural: "Natural hazards", conflict: "War / Conflict" },
   sources: {
     usgs: "USGS",
@@ -132,6 +143,7 @@ const EN = {
   healthWarn: {
     no_watch_points: "No flood watch points; Open-Meteo idle",
     no_watch_regions: "No watch regions; regional alerts inactive",
+    watch_points_off_channel: "Some flood watch points are off the river grid; skipped",
   },
   units: {
     M: "magnitude",
@@ -349,7 +361,8 @@ const TYPE_COLORS = {
   drought: "#a78b4a", // 枯沙 · 干旱
   crisis_signal: "#f472b6", // 粉红 · 危机信号
   armed_clash: "#ef4444", // 正红 · 武装冲突
-  war: "#b91c1c", // 暗红 · 战争冲突
+  war: "#b91c1c", // 暗红 · 战争冲突（历史遗留类型）
+  theater: "#b91c1c", // 暗红 · 战区基线层
 };
 const TYPE_COLOR_DEFAULT = "#94a3b8";
 const EQ_COLOR_M5 = "#f0b429"; // 震级≥5 黄
@@ -364,9 +377,9 @@ const FILTERABLE_TYPES = [
   { type: "wildfire", category: "natural" },
   { type: "volcano", category: "natural" },
   { type: "drought", category: "natural" },
-  { type: "war", category: "conflict" },
   { type: "armed_clash", category: "conflict" },
   { type: "crisis_signal", category: "conflict" },
+  { type: "theater", category: "conflict", layer: true }, // 战区基线：独立图层，不计入统计
 ];
 
 /** 类型开关：默认全开；localStorage 持久化 */
@@ -409,6 +422,7 @@ function setTypeFilter(type, on, { apply = true } = {}) {
   const input = document.getElementById(`f-type-${type}`);
   if (input) input.checked = typeFilterEnabled[type];
   if (apply && lastFeatures.length) applyFeatures(lastFeatures);
+  if (type === "theater") syncTheaterLayer();
 }
 
 function setAllTypeFilters(on, { category = null } = {}) {
@@ -729,11 +743,21 @@ function buildBrief(p) {
           ? "武装冲突"
           : "冲突媒体信号";
     const n = met.event_count || met.article_count || mag;
+    const isAgg = met.aggregate === true || met.aggregate === "true" || p.is_aggregate;
+    const slot = met.latest_slot_count;
     const nTxt =
-      n != null ? (en ? `${fmtNum(n)} signals in window, ` : `近窗聚合 ${fmtNum(n)} 起信号，`) : "";
+      n != null
+        ? isAgg
+          ? en
+            ? `${fmtNum(n)} signals today${slot != null ? ` (${fmtNum(slot)} in last 15 min)` : ""}, `
+            : `当日累计 ${fmtNum(n)} 起信号${slot != null ? `（最近 15 分钟 ${fmtNum(slot)} 起）` : ""}，`
+          : en
+            ? `${fmtNum(n)} signals in window, `
+            : `近窗聚合 ${fmtNum(n)} 起信号，`
+        : "";
     return en
-      ? `${when} ${place} ${kind}: ${nTxt}${grade.text}. Theater-level coordinates.`
-      : `${when} ${place} ${kind}：${nTxt}${grade.text}。坐标为战区/国家级示意位置，非战术点位。`;
+      ? `${when} ${place} ${kind}: ${nTxt}${grade.text}. Country-level aggregate from GDELT; not a confirmed incident.`
+      : `${when} ${place} ${kind}：${nTxt}${grade.text}。GDELT 国家级聚合信号，非确证事件，坐标为国家示意位置。`;
   }
 
   return en
@@ -918,6 +942,7 @@ function isBreakingAlert(f) {
   const p = (f && f.properties) || f || {};
   if (isMinorCmaAlert(p)) return false;
   if (p.type === "war") return false;
+  if (p.is_aggregate || parseMetrics(p).aggregate) return false;
   const coords = f && f.geometry && f.geometry.coordinates;
   const lon = coords ? Number(coords[0]) : Number(p._lon);
   const lat = coords ? Number(coords[1]) : Number(p._lat);
@@ -1925,10 +1950,11 @@ function renderTypeLegend() {
     const checked = isTypeEnabled(it.type) ? "checked" : "";
     const color = TYPE_COLORS[it.type] || TYPE_COLOR_DEFAULT;
     const label = typeLabel(it.type);
-    const n = counts[it.type] || 0;
+    const n = it.layer ? theaterFeatures.length : counts[it.type] || 0;
     const offCls = isTypeEnabled(it.type) ? "" : " is-off";
+    const title = it.layer ? L().theaterNote : label;
     return `
-    <label class="legend-item legend-filter${offCls}" data-type="${escapeHtml(it.type)}" title="${escapeHtml(label)}">
+    <label class="legend-item legend-filter${offCls}${it.layer ? " legend-layer" : ""}" data-type="${escapeHtml(it.type)}" title="${escapeHtml(title)}">
       <input type="checkbox" id="f-type-${escapeHtml(it.type)}" data-type-filter="${escapeHtml(it.type)}" ${checked} />
       <span class="legend-dot" style="background:${color};color:${color}"></span>
       <span class="legend-lab">${escapeHtml(label)}</span>
@@ -2647,6 +2673,45 @@ map.on("load", async () => {
     },
   });
 
+  // 战区基线层：独立 source，画在事件点下方；菱形描边区分"非事件"
+  map.addSource("theaters", {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+  map.addLayer({
+    id: "theater-halo",
+    type: "circle",
+    source: "theaters",
+    paint: {
+      "circle-radius": ["match", ["get", "level"], "high", 26, "medium", 20, 15],
+      "circle-color": TYPE_COLORS.theater,
+      "circle-opacity": 0.12,
+      "circle-blur": 0.8,
+    },
+  });
+  map.addLayer({
+    id: "theater-ring",
+    type: "circle",
+    source: "theaters",
+    paint: {
+      "circle-radius": ["match", ["get", "level"], "high", 11, "medium", 9, 7],
+      "circle-color": "rgba(0,0,0,0)",
+      "circle-stroke-width": 2,
+      "circle-stroke-color": TYPE_COLORS.theater,
+      "circle-stroke-opacity": 0.85,
+    },
+  });
+  map.addLayer({
+    id: "theater-core",
+    type: "circle",
+    source: "theaters",
+    paint: {
+      "circle-radius": 3,
+      "circle-color": TYPE_COLORS.theater,
+      "circle-opacity": 0.9,
+    },
+  });
+
   // 标记色来自要素属性 marker_color（与列表等级色一致，含地震≥5黄/≥7红）
   const colorByMarker = ["coalesce", ["get", "marker_color"], TYPE_COLOR_DEFAULT];
 
@@ -2752,15 +2817,36 @@ map.on("load", async () => {
   };
   // 同一点可能同时命中 ev-point / live-core / live-ring，只处理一次
   map.on("click", (e) => {
+    // 战区核心点很小（3px），命中它说明用户明确点的是战区标记；否则事件点优先
+    const coreLayer = map.getLayer("theater-core") ? ["theater-core"] : [];
+    const coreHit = coreLayer.length
+      ? map.queryRenderedFeatures(e.point, { layers: coreLayer })
+      : [];
     const layers = ["ev-live-core", "ev-point", "ev-live-ring"].filter((id) => map.getLayer(id));
     const hit = layers.length ? map.queryRenderedFeatures(e.point, { layers }) : [];
-    if (hit.length) {
+    if (hit.length && !coreHit.length) {
       openPopup({ features: [hit[0]], lngLat: e.lngLat });
+      return;
+    }
+    const tLayers = ["theater-core", "theater-ring"].filter((id) => map.getLayer(id));
+    const tHit = coreHit.length
+      ? coreHit
+      : tLayers.length
+        ? map.queryRenderedFeatures(e.point, { layers: tLayers })
+        : [];
+    if (tHit.length) {
+      const f = tHit[0];
+      closeTourPopup();
+      const coords = f.geometry.coordinates;
+      tourPopup = new maplibregl.Popup({ closeButton: true, maxWidth: "360px", offset: 14 })
+        .setLngLat(coords)
+        .setHTML(theaterPopupHtml(f.properties))
+        .addTo(map);
       return;
     }
     onMapBackgroundClick(e);
   });
-  ["ev-point", "ev-live-core", "ev-live-ring"].forEach((layer) => {
+  ["ev-point", "ev-live-core", "ev-live-ring", "theater-ring", "theater-core"].forEach((layer) => {
     map.on("mouseenter", layer, () => {
       map.getCanvas().style.cursor = "pointer";
     });
@@ -2780,6 +2866,8 @@ map.on("load", async () => {
   applySurfaceMode("sat", { silent: true });
   startLivePulse();
   await refresh();
+  loadTheaters();
+  setInterval(loadTheaters, 600000);
   setInterval(refresh, 20000);
   setInterval(loadHealth, 30000);
   // 每 5 秒重算闪烁态：新灾害闪完后恢复静态类型色点
@@ -3595,6 +3683,56 @@ function bindTimeRangeButtons() {
   });
 }
 
+/* ========== 战区基线层（/api/theaters）：独立图层，不进事件统计 ========== */
+let theaterFeatures = [];
+
+async function loadTheaters() {
+  try {
+    const r = await fetch("/api/theaters", { cache: "no-store" });
+    if (!r.ok) throw new Error("theaters " + r.status);
+    const fc = await r.json();
+    theaterFeatures = Array.isArray(fc.features) ? fc.features : [];
+  } catch (e) {
+    console.warn("theaters failed", e);
+    theaterFeatures = [];
+  }
+  syncTheaterLayer();
+  const cntEl = document.getElementById("cnt-type-theater");
+  if (cntEl) cntEl.textContent = String(theaterFeatures.length);
+}
+
+function syncTheaterLayer() {
+  if (!mapReady || !map.getSource("theaters")) return;
+  const wantC = document.getElementById("f-conflict")?.checked !== false;
+  const on = wantC && isTypeEnabled("theater");
+  map.getSource("theaters").setData({
+    type: "FeatureCollection",
+    features: on ? theaterFeatures : [],
+  });
+}
+
+function theaterPopupHtml(p) {
+  const en = uiLang === "en";
+  const name = en ? p.name_en || p.name_zh : p.name_zh || p.name_en;
+  const lvl = L().theaterLevel[p.level] || p.level || "";
+  const tone = p.level === "high" ? "red" : p.level === "medium" ? "orange" : "yellow";
+  const note = en ? p.note_en || p.note_zh || "" : p.note_zh || p.note_en || "";
+  return `
+    <div class="popup-card">
+      <div class="grade-line">
+        <span class="ptag" style="color:${TYPE_COLORS.theater};border-color:${TYPE_COLORS.theater}">${escapeHtml(typeLabel("theater"))}</span>
+        <span class="grade-badge g-${tone}">${escapeHtml(lvl)}</span>
+      </div>
+      <h4>${escapeHtml(name || "")}</h4>
+      <div class="brief-box">${escapeHtml(note)}</div>
+      <dl class="kv">
+        <dt>${en ? "Region" : "区域"}</dt><dd>${escapeHtml(countryLabel(p.iso3))}</dd>
+        <dt>${en ? "Updated" : "更新"}</dt><dd>${fmtTime(p.updated_at)}</dd>
+      </dl>
+      <div class="popup-foot">${escapeHtml(L().theaterNote)}</div>
+    </div>`;
+}
+
 async function refresh() {
   const hours = selectedHours();
   try {
@@ -3891,8 +4029,10 @@ function applyFeaturesBody(allRaw) {
   }
   for (const it of FILTERABLE_TYPES) {
     const cntEl = document.getElementById(`cnt-type-${it.type}`);
-    if (cntEl) cntEl.textContent = String(typeCounts[it.type] || 0);
+    if (cntEl)
+      cntEl.textContent = String(it.layer ? theaterFeatures.length : typeCounts[it.type] || 0);
   }
+  syncTheaterLayer();
 
   detectAndQueueBreaking(feats);
 
@@ -4024,7 +4164,7 @@ function buildPopupHtml(p) {
     extraRows = `
         <dt>区域</dt><dd>${escapeHtml(countryLabel(p.country))}</dd>
         <dt>冲突级别</dt><dd>国家/代理人/边境武装级（已过滤普通枪击）</dd>
-        <dt>时间窗</dt><dd>${fmtTime(p.occurred_at)}</dd>`;
+        <dt>${p.is_aggregate || parseMetrics(p).aggregate ? "统计日" : "时间窗"}</dt><dd>${fmtTime(p.occurred_at)}</dd>`;
   } else {
     extraRows = `
         <dt>位置</dt><dd>${escapeHtml(fmtCoord(lat, lon))}</dd>
@@ -4831,6 +4971,7 @@ function connectWS() {
   if (!el) return;
   el.addEventListener("change", () => {
     applyFeatures(lastFeatures);
+    syncTheaterLayer();
   });
 });
 bindTimeRangeButtons();

@@ -18,12 +18,12 @@ from .config import settings, REPO_ROOT
 from .net import effective_proxy_for_log
 from .logging_setup import setup_logging
 from .log_retention import run_log_retention
-from .api import routes_events, routes_health, ws
+from .api import routes_events, routes_health, routes_theaters, ws
 from .collectors.usgs import UsgsCollector
 from .collectors.gdacs import GdacsCollector
 from .collectors.eonet import EonetCollector
 from .collectors.gdelt import GdeltCollector
-from .collectors.war_hotspots import WarHotspotsCollector
+from .collectors.theaters import refresh_theaters
 from .collectors.openmeteo_flood import OpenMeteoFloodCollector
 from .collectors.firms import FirmsCollector
 from .collectors.cma_alert import CmaAlertCollector
@@ -70,7 +70,7 @@ def _register_jobs() -> None:
         ("gdacs", settings.enable_gdacs, GdacsCollector().run, settings.interval_gdacs, 20),
         ("eonet", settings.enable_eonet, EonetCollector().run, settings.interval_eonet, 30),
         ("gdelt", settings.enable_gdelt, GdeltCollector().run, settings.interval_gdelt, 45),
-        ("war_hotspots", True, WarHotspotsCollector().run, 3600, 2),
+        ("war_hotspots", True, refresh_theaters, 3600, 2),
         ("openmeteo", settings.enable_openmeteo, OpenMeteoFloodCollector().run,
          settings.interval_openmeteo, 60),
         ("cma", getattr(settings, "enable_cma", True), _cma_tick,
@@ -168,6 +168,7 @@ app = FastAPI(
 )
 app.include_router(routes_events.router)
 app.include_router(routes_health.router)
+app.include_router(routes_theaters.router)
 app.include_router(ws.router)
 
 _front = _frontend_dir()

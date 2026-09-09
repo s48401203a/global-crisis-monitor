@@ -33,6 +33,14 @@ from tests.test_net_sources import (
     test_proxy_mode_url_redacts_credentials,
     test_sources_registry_covers_all_collectors_and_emsc,
 )
+from tests.test_phase1_collectors import (
+    test_alert_armed_clash_requires_daily_count_threshold,
+    test_firms_cluster_merges_pixels_and_drops_singletons,
+    test_gdelt_export_aggregates_country_day_single_row,
+    test_gdelt_second_slot_accumulates_into_same_row,
+    test_gdelt_single_hit_country_dropped,
+    test_wildfire_severity_uses_frp_when_unit_mw,
+)
 from tests.test_parse_dt_and_severity import (
     test_eonet_naive_is_utc,
     test_flood_ratio_high_small_river_alertable,
@@ -67,6 +75,12 @@ def main() -> int:
         test_sources_registry_covers_all_collectors_and_emsc,
         test_firms_disabled_without_key,
         test_pipeline_status_thresholds,
+        test_gdelt_export_aggregates_country_day_single_row,
+        test_gdelt_second_slot_accumulates_into_same_row,
+        test_gdelt_single_hit_country_dropped,
+        test_firms_cluster_merges_pixels_and_drops_singletons,
+        test_wildfire_severity_uses_frp_when_unit_mw,
+        test_alert_armed_clash_requires_daily_count_threshold,
     ]
     failed = 0
     for fn in tests:

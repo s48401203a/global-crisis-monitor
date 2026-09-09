@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     enable_cenc: bool = True
     enable_firms: bool = False
     firms_map_key: str = ""
+    firms_source: str = "VIIRS_SNPP_NRT"
 
     interval_usgs: int = 120
     interval_gdacs: int = 360
@@ -39,6 +40,8 @@ class Settings(BaseSettings):
     alert_eq_local_mag: float = 4.0
     alert_mute_minutes: int = 30
     alert_conflict_min_confidence: float = 0.7
+    # 聚合冲突信号（国家×日）当日累计 ≥ N 起才告警
+    alert_conflict_min_events: int = 10
     # 启动后多少秒才开始评估告警（让回补/首采先落库）
     alert_startup_grace_seconds: int = 120
 

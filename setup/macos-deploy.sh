@@ -87,12 +87,15 @@ else
   "$PG_BIN/psql" -d crisis -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS btree_gin;"
 fi
 
+# 增量迁移（幂等）：关注点/区域种子、战区表、洪水样本表
+run_migrations() { PG_BIN="$PG_BIN" bash "$ROOT/setup/migrate.sh"; }
 if ! "$PG_BIN/psql" -d crisis -tAc "SELECT to_regclass('public.event')" | grep -q event; then
   echo "[macos-deploy] 写入 schema …"
   "$PG_BIN/psql" -d crisis -v ON_ERROR_STOP=1 -f "$ROOT/setup/05-schema.sql"
 else
   echo "[macos-deploy] schema 已存在，跳过 05-schema.sql"
 fi
+run_migrations
 
 # 用当前用户也能连库，便于本机排障
 "$PG_BIN/psql" -d crisis -v ON_ERROR_STOP=1 -c "GRANT ALL PRIVILEGES ON DATABASE crisis TO postgres;"
@@ -132,6 +135,7 @@ ALERT_EQ_GLOBAL_MAG=5.0
 ALERT_EQ_LOCAL_MAG=4.0
 ALERT_MUTE_MINUTES=30
 ALERT_CONFLICT_MIN_CONFIDENCE=0.7
+ALERT_CONFLICT_MIN_EVENTS=10
 
 # 出站代理：env（沿用环境变量）| direct（直连）| url（用 HTTP_PROXY_URL）
 HTTP_PROXY_MODE=env

@@ -26,6 +26,16 @@ def health():
             "SELECT count(*) FROM watch_point WHERE enabled")).scalar()
         watch_regions = s.execute(text(
             "SELECT count(*) FROM watch_region WHERE enabled")).scalar()
+        # 90 天中位数 < 20 m³/s 的关注点：GloFAS 网格点不在河道上，需人工挪坐标
+        off_channel = [r[0] for r in s.execute(text("""
+            SELECT p.name FROM watch_point p
+              JOIN watch_sample w ON w.point_id = p.id
+             WHERE p.enabled AND w.day >= CURRENT_DATE - 90
+             GROUP BY p.id, p.name
+            HAVING count(*) >= 14
+               AND percentile_cont(0.5) WITHIN GROUP (ORDER BY w.discharge) < 20
+             ORDER BY p.name
+        """)).fetchall()]
 
     by_src = {r.source: r for r in rows}
     sources = []
@@ -81,6 +91,10 @@ def health():
     if watch_regions == 0:
         warnings.append({"code": "no_watch_regions",
                          "zh": "未配置关注区域，关注区域告警规则不会触发"})
+    if off_channel:
+        warnings.append({"code": "watch_points_off_channel",
+                         "zh": f"{len(off_channel)} 个洪水关注点不在河道格点上（已跳过触发）",
+                         "points": off_channel})
 
     return {
         "event_total": total,

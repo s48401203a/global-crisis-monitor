@@ -39,7 +39,7 @@ def all_sources() -> list[SourceSpec]:
         _spec("eonet", "NASA 地球观测事件", "NASA EONET", "poll", s.interval_eonet, 4, s.enable_eonet),
         _spec("gdelt", "全球事件数据库", "GDELT", "poll", s.interval_gdelt, 4, s.enable_gdelt,
               "媒体信号，非确证事件"),
-        _spec("war", "战争冲突热点", "War hotspots", "static", 3600, 2, True, "编辑维护的基线层"),
+        _spec("war", "战区基线层", "Conflict theaters", "static", 3600, 2, True, "编辑维护的基线层，独立图层，不计入事件"),
         _spec("openmeteo", "Open-Meteo 洪水", "Open-Meteo flood", "poll", s.interval_openmeteo, 2, s.enable_openmeteo),
         _spec("cma", "中央气象台预警", "CMA weather alerts", "poll", s.interval_cma, 5, s.enable_cma,
               "非公开文档接口"),

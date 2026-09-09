@@ -1,7 +1,8 @@
 # D:\crisis\app\app\collectors\gdelt.py
 # 冲突信号采集：
-# 1) 优先解析 GDELT 2.0 最新 export.CSV（限流友好）
-# 2) DOC API 作为补充（常 429，失败不致命）
+# 1) 优先解析 GDELT 2.0 最新 export.CSV（限流友好），按「国家 × 日」聚合为 armed_clash
+# 2) DOC API 作为补充（常 429，失败不致命），产出 crisis_signal
+# 注意：这是媒体/事件数据库的聚合信号，不是确证事件；is_aggregate=true
 from __future__ import annotations
 
 import csv
@@ -215,9 +216,14 @@ class GdeltCollector(BaseCollector):
         return self._normalize_doc(raw.get("doc") or {})
 
     def _normalize_export(self, rows: list[list[str]]) -> list[NormalizedEvent]:
-        # 按国家聚合 15 分钟槽
+        """按「国家 × UTC 日」聚合为一条 armed_clash 聚合信号。
+
+        同一天内每 15 分钟一个 export 文件，全部 upsert 到同一行：
+        metrics.slots 记录各槽计数，event_count 为当日累计；不再每槽新建事件。
+        """
         now = datetime.now(timezone.utc)
         slot = now.replace(minute=(now.minute // 15) * 15, second=0, microsecond=0)
+        day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         buckets: dict[str, list[dict]] = defaultdict(list)
 
         for row in rows:
@@ -244,46 +250,75 @@ class GdeltCollector(BaseCollector):
                 "name": row[52] if len(row) > 52 else "",
             })
 
+        # 当日已有累计（同源同 ID 已入库时，从 observation.raw 取回槽计数）
+        prior = self._prior_day_slots(day)
+
         out: list[NormalizedEvent] = []
         for iso3, items in buckets.items():
-            n = len(items)
+            n_slot = len(items)
             # 单点偶发且无多起互证 → 不入库（避免治安噪声）
-            if n < 2:
+            if n_slot < 2:
                 continue
-            conf = CONF_BY_COUNT.get(min(n, 5), 0.85)
-            lat = sum(i["lat"] for i in items) / n
-            lon = sum(i["lon"] for i in items) / n
+            sid = f"day:{iso3}:{day:%Y%m%d}"
+            slots = dict(prior.get(sid, {}))
+            slots[f"{slot:%H%M}"] = n_slot
+            n_day = sum(slots.values())
+            conf = CONF_BY_COUNT.get(min(n_slot, 5), 0.85)
+            # 坐标用本槽报道点的均值（落在国内、反映报道集中区），国家质心只作名称与兜底；
+            # 不再强制吸附质心：避免与战区基线层（同样位于质心）重叠成同一个点
+            lat = sum(i["lat"] for i in items) / n_slot
+            lon = sum(i["lon"] for i in items) / n_slot
             if iso3 in self._iso_centroid and not iso3.startswith("PT:"):
-                lon, lat, cname = (
-                    self._iso_centroid[iso3][0],
-                    self._iso_centroid[iso3][1],
-                    self._iso_centroid[iso3][2],
-                )
+                cname = self._iso_centroid[iso3][2]
+                if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                    lon, lat = self._iso_centroid[iso3][0], self._iso_centroid[iso3][1]
             else:
                 cname = iso3
-            gold_avg = sum(i["gold"] for i in items) / n
-            # 国家/武装级统一记为 war；强度用事件数表达
+            gold_avg = sum(i["gold"] for i in items) / n_slot
             out.append(NormalizedEvent(
                 source=self.name,
-                source_event_id=f"export:{iso3}:{slot:%Y%m%dT%H%M}",
+                source_event_id=sid,
                 category="conflict",
-                type="war",
+                type="armed_clash",
                 lat=float(lat), lon=float(lon),
-                occurred_at=slot,
-                headline=f"{cname}：国家/武装冲突信号 {n} 起（边境或代理人冲突级）",
-                magnitude_value=float(n),
+                occurred_at=day,
+                headline=f"{cname}：国家/武装冲突信号 当日 {n_day} 起（最近 15 分钟 {n_slot} 起）",
+                magnitude_value=float(n_day),
                 magnitude_unit="events",
                 confidence=min(0.9, conf + min(0.1, gold_avg / 100)),
                 metrics={
-                    "event_count": n,
+                    "event_count": n_day,
+                    "latest_slot_count": n_slot,
+                    "slots": slots,
                     "goldstein_abs_avg": round(gold_avg, 2),
                     "iso3": iso3 if not iso3.startswith("PT:") else None,
                     "source_mode": "export",
                     "filter": "state_level_only",
+                    "aggregate": True,
+                    "aggregate_key": "country_day",
                 },
-                raw={"count": n, "iso3": iso3},
+                raw={"count": n_day, "iso3": iso3, "slots": slots},
             ))
         return out
+
+    def _prior_day_slots(self, day: datetime) -> dict[str, dict[str, int]]:
+        """读取当日已入库的各国槽计数：{source_event_id: {"HHMM": n}}。"""
+        try:
+            with get_session() as s:
+                rows = s.execute(text("""
+                    SELECT source_event_id, raw->'slots'
+                      FROM observation
+                     WHERE source = 'gdelt'
+                       AND source_event_id LIKE :pat
+                """), {"pat": f"day:%:{day:%Y%m%d}"}).fetchall()
+            out: dict[str, dict[str, int]] = {}
+            for sid, slots in rows:
+                if isinstance(slots, dict):
+                    out[sid] = {k: int(v) for k, v in slots.items()}
+            return out
+        except Exception as e:
+            log.debug("[gdelt] 读取当日槽计数失败: %r", e)
+            return {}
 
     def _normalize_doc(self, raw: dict) -> list[NormalizedEvent]:
         # 兼容旧 DOC 聚合逻辑（简化）

@@ -14,6 +14,21 @@
 
 ---
 
+### 2026-09-09 【Claude Fable 5.1】 Phase 0 止血 + Phase 1 数据语义与告警
+
+- **Phase 0**（`b9a40c9`）：`app/net.py` 代理策略（`HTTP_PROXY_MODE=env|direct|url`）；`core/sources.py` 源注册表；`/api/health` 增 `pipeline_status`/`enabled`/`warnings`，前端顶栏多源异常红显；EMSC 写健康表；全部任务错峰首采；dist 缺失挂占位页；`start.sh` 按 mtime 重建 dist；`vp check` 通过（数据文件排除、typeCheck 关）；删除 `app/app/static/index.html`、`web/src/style.css`、重复 schema；一次性/Windows 脚本归入 `setup/oneoff/`、`setup/windows/`；AGENTS/README/DEPLOY/PR 模板口径统一
+- **Phase 1**：GDELT 改「国家×日」聚合 `armed_clash`（`is_aggregate`），库内 1658 槽行合并为 279 行；战区热点迁入 `theater` 表 + `/api/theaters`，前端独立图层「战区基线」可开关、不计统计；`watch_point` 41 / `watch_region` 6 种子；Open-Meteo 逐日样本 `watch_sample`，基线 = 90 天中位数（≥14 样本，<20 m³/s 视为不在河道跳过）；FIRMS 改按关注区域 bbox + 1 km 网格聚类 + FRP 分档；告警改 `first_seen_at` 判新、`muted_until` 生效、聚合冲突按当日计数阈值
+- 迁移：`setup/migrate.sh` + `07/08/09-*.sql`（幂等，记 `schema_migration`）；数据修正 `setup/oneoff/migrate_phase1_data.py`（已 apply，备份 `backups/pre-phase1-*.dump`）；`snap_watch_points.py` 吸附离河道点
+- 验证：单测 30/30；`tests.integration_alerts` 5/5（首见 1 次、重 upsert 不重复、静默内小跃升不响、静默后跃升响、旧事件重启不响）；Playwright：战区层 12 点开关、战区弹窗、聚合信号弹窗；重启后告警 5 条（改前同场景 131 条）
+- 已知：GDELT 聚合坐标改用本槽报道点均值，不再吸附国家质心
+
+### 2026-09-09 【Claude Fable 5.1】 项目评审与整体改造方案
+
+- 新增 `docs/项目评审与改造方案-fable-5.1.html`（自包含、菜单分页、护眼主题、刷新保留位置）
+- 评审方法：全量源码阅读 + 单测 18/18 + `./start.sh --no-open` 拉起 8001/5180 + API 负载实测 + psql 抽查 + Playwright 6 条关键路径
+- 结论：P0 4 项（GDELT 15 分钟槽灌水 1540 行 war、watch_point/watch_region 为空、代理失效致全源静默中断、dist 落后源码）；五阶段改造路线见文档第 05 章
+- 未改任何源码；服务当前处于运行状态
+
 ### 2026-09-09 【Grok 4.6】 GitHub main + Cloudflare 公网预览
 
 - PR #1 合入 `main`：https://github.com/s48401203a/global-crisis-monitor

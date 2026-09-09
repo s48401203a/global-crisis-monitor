@@ -56,7 +56,7 @@ def _insert_event(s, ev: NormalizedEvent, sev: float) -> int:
         INSERT INTO event (category, type, severity, confidence, status,
                            magnitude_value, magnitude_unit,
                            centroid, footprint, occurred_at, headline,
-                           primary_source, metrics, actors)
+                           primary_source, metrics, actors, is_aggregate)
         VALUES (:cat, :typ, :sev, :conf,
                 CASE WHEN :conf < 0.7 THEN 'unconfirmed' ELSE 'active' END,
                 :mv, :mu,
@@ -65,7 +65,8 @@ def _insert_event(s, ev: NormalizedEvent, sev: float) -> int:
                      ELSE ST_GeomFromGeoJSON(CAST(:fp AS text))::geography END,
                 :occ, :head, :src, CAST(:met AS text)::jsonb,
                 CASE WHEN CAST(:act AS text) IS NULL THEN NULL
-                     ELSE CAST(:act AS text)::jsonb END)
+                     ELSE CAST(:act AS text)::jsonb END,
+                :agg)
         RETURNING id
     """), {
         "cat": ev.category, "typ": ev.type, "sev": sev, "conf": ev.confidence,
@@ -74,6 +75,7 @@ def _insert_event(s, ev: NormalizedEvent, sev: float) -> int:
         "occ": ev.occurred_at, "head": ev.headline, "src": ev.source,
         "met": json.dumps(ev.metrics, ensure_ascii=False, default=str),
         "act": act,
+        "agg": bool(ev.metrics.get("aggregate")),
     }).fetchone()
     eid = row[0]
 
@@ -121,8 +123,9 @@ def _update_event(s, eid: int, ev: NormalizedEvent, sev: float) -> None:
                -- footprint 总是取最新(台风路径持续延长)
                footprint = CASE WHEN CAST(:fp AS text) IS NULL THEN footprint
                                 ELSE ST_GeomFromGeoJSON(CAST(:fp AS text))::geography END,
-               -- 战区基线刷新发生时间，避免 7 天窗口后从默认列表消失
-               occurred_at = CASE WHEN :src = 'war' THEN :occ ELSE occurred_at END
+               -- 聚合信号（国家×日）按当日累计更新：occurred_at 固定为当日 0 点
+               occurred_at = CASE WHEN :agg THEN :occ ELSE occurred_at END,
+               is_aggregate = :agg OR is_aggregate
          WHERE id = :eid
     """), {
         "eid": eid, "sev": sev, "conf": ev.confidence, "take": take_over,
@@ -130,4 +133,5 @@ def _update_event(s, eid: int, ev: NormalizedEvent, sev: float) -> None:
         "mu": ev.magnitude_unit, "typ": ev.type, "head": ev.headline,
         "met": json.dumps(ev.metrics, ensure_ascii=False, default=str),
         "src": ev.source, "fp": fp, "occ": ev.occurred_at,
+        "agg": bool(ev.metrics.get("aggregate")),
     })
