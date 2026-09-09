@@ -10,6 +10,9 @@ logs/
 backups/
 *.log
 *.pid
+.vite-dev.url
+.vite-dev.pid
+.vite-dev.port
 
 # Python environments and generated files
 app/.venv/
@@ -42,4 +45,7 @@ tools/cloudflared.exe
 
 # Playwright CLI local dumps
 web/.playwright-cli/
+
+# Local Grok session copies (resume still uses ~/.grok/sessions)
+.grok/
 

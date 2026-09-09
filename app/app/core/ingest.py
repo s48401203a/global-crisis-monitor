@@ -90,8 +90,10 @@ def _insert_event(s, ev: NormalizedEvent, sev: float) -> int:
 
 def _update_event(s, eid: int, ev: NormalizedEvent, sev: float) -> None:
     cur = s.execute(text(
-        "SELECT primary_source, severity FROM event WHERE id = :eid"
+        "SELECT primary_source, severity, status FROM event WHERE id = :eid"
     ), {"eid": eid}).fetchone()
+    if cur and cur[2] == "deleted":
+        return
     take_over = should_take_over(ev.source, cur[0] if cur else None)
 
     fp = json.dumps(ev.footprint_geojson) if ev.footprint_geojson else None
@@ -100,14 +102,21 @@ def _update_event(s, eid: int, ev: NormalizedEvent, sev: float) -> None:
            SET severity = GREATEST(severity, :sev),
                revision = revision + 1,
                updated_at = now(),
-               status = CASE WHEN status = 'unconfirmed' AND :conf >= 0.7
-                             THEN 'active' ELSE 'revised' END,
+               status = CASE
+                            WHEN status = 'unconfirmed' AND :conf >= 0.7 THEN 'active'
+                            ELSE 'revised'
+                        END,
                confidence = GREATEST(confidence, :conf),
-               -- 仅当新源更权威时才覆盖坐标与量级
+               -- 更权威源或同源修订时覆盖坐标、量级、类型；deleted 行在上方已跳过
                centroid = CASE WHEN :take THEN ST_MakePoint(:lon,:lat)::geography
                                ELSE centroid END,
                magnitude_value = CASE WHEN :take THEN COALESCE(:mv, magnitude_value)
                                       ELSE magnitude_value END,
+               magnitude_unit = CASE WHEN :take THEN COALESCE(:mu, magnitude_unit)
+                                     ELSE magnitude_unit END,
+               type = CASE WHEN :take THEN :typ ELSE type END,
+               headline = CASE WHEN :take THEN :head ELSE headline END,
+               metrics = CASE WHEN :take THEN CAST(:met AS text)::jsonb ELSE metrics END,
                primary_source = CASE WHEN :take THEN :src ELSE primary_source END,
                -- footprint 总是取最新(台风路径持续延长)
                footprint = CASE WHEN CAST(:fp AS text) IS NULL THEN footprint
@@ -118,5 +127,7 @@ def _update_event(s, eid: int, ev: NormalizedEvent, sev: float) -> None:
     """), {
         "eid": eid, "sev": sev, "conf": ev.confidence, "take": take_over,
         "lon": ev.lon, "lat": ev.lat, "mv": ev.magnitude_value,
+        "mu": ev.magnitude_unit, "typ": ev.type, "head": ev.headline,
+        "met": json.dumps(ev.metrics, ensure_ascii=False, default=str),
         "src": ev.source, "fp": fp, "occ": ev.occurred_at,
     })

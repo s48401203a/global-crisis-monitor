@@ -1,11 +1,10 @@
 # 全球综合危机监测中心 · 前端（Vite+）
+# Frontend (Vite+)
 
-按 `D:\AI\Grok\0811\Vite-VitePlus-Agent技术说明书.html` 迁移到 **Vite+ (`vp`)**。
+仓库总说明 / project overview: [../../README.md](../README.md)
 
-## 开发（热更新自动预览）
-
-1. 先启动后端 API（`D:\crisis\启动.bat` 或确保 `crisis-api` 服务 Running）
-2. 前端：
+开发时先起后端，再起前端。默认 **http://127.0.0.1:5180/**，`/api` `/ws` 代理到 **8001**。  
+Start the API first, then the UI. Default **http://127.0.0.1:5180/**; `/api` and `/ws` proxy to **8001**.
 
 ```powershell
 $env:Path = "$env:USERPROFILE\.vite-plus\bin;" + $env:Path
@@ -14,10 +13,7 @@ vp install
 vp dev --host --open
 ```
 
-浏览器默认：**http://localhost:5173/**
-
-- `/api/*`、`/ws/*` 代理到 `http://127.0.0.1:8000`
-- 国界数据：`public/data/countries.geojson`
+- 国界数据 / borders: `public/data/countries.geojson`
 
 ## 构建
 

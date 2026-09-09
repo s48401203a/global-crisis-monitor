@@ -7,6 +7,23 @@ from tests.test_dedupe_constants import (
     test_eq_distance_meters,
     test_eq_mag_tolerance,
     test_eq_time_window_seconds,
+    test_same_source_takes_over,
+)
+from tests.test_cma_cenc import (
+    test_classify_cma_rainstorm_not_flood,
+    test_cma_normalize_skips_wind_keeps_rain,
+    test_cenc_normalize_filters_small,
+)
+from tests.test_log_retention import (
+    test_deletes_oldest_rotated_first,
+    test_truncates_active_log_keep_tail,
+    test_under_budget_noop,
+)
+from tests.test_alerts import (
+    test_match_rule_eq_china_m4,
+    test_match_rule_eq_tiny_skipped,
+    test_match_rule_rainstorm,
+    test_match_rule_war_baseline_skipped,
 )
 from tests.test_parse_dt_and_severity import (
     test_eonet_naive_is_utc,
@@ -21,10 +38,21 @@ def main() -> int:
         test_eq_time_window_seconds,
         test_eq_distance_meters,
         test_eq_mag_tolerance,
+        test_same_source_takes_over,
         test_gdacs_naive_is_utc,
         test_eonet_naive_is_utc,
         test_flood_ratio_high_small_river_alertable,
         test_war_baseline_does_not_alert,
+        test_deletes_oldest_rotated_first,
+        test_truncates_active_log_keep_tail,
+        test_under_budget_noop,
+        test_classify_cma_rainstorm_not_flood,
+        test_cma_normalize_skips_wind_keeps_rain,
+        test_cenc_normalize_filters_small,
+        test_match_rule_rainstorm,
+        test_match_rule_eq_china_m4,
+        test_match_rule_eq_tiny_skipped,
+        test_match_rule_war_baseline_skipped,
     ]
     failed = 0
     for fn in tests:

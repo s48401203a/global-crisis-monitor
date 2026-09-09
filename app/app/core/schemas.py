@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 Category = Literal["natural", "conflict"]
 EventType = Literal[
-    "earthquake", "cyclone", "flood", "wildfire", "volcano", "drought",
+    "earthquake", "cyclone", "flood", "rainstorm", "wildfire", "volcano", "drought",
     "armed_clash", "crisis_signal", "war",
 ]
 

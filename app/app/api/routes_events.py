@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api")
 
 @router.get("/events")
 def list_events(
-    hours: int = Query(24, ge=1, le=720),
+    hours: int = Query(24, ge=1, le=9000),
     category: str | None = None,
     min_severity: float = 0.0,
     limit: int = Query(2000, ge=1, le=10000),

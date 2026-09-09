@@ -70,9 +70,20 @@ def compute_severity(ev: NormalizedEvent) -> float:
                                 (20, 60, 0.45, 0.60), (60, 500, 0.60, 0.70)])
         return round(min(0.7, base * ev.confidence), 3)
 
+    if ev.type == "rainstorm":
+        g = ev.metrics.get("cma_alertscore")
+        if g is not None:
+            try:
+                return float(g)
+            except (TypeError, ValueError):
+                pass
+        return 0.55
+
     if ev.type == "flood":
         # GDACS 洪水：优先官方 alertscore
         g = ev.metrics.get("gdacs_alertscore")
+        if g is None:
+            g = ev.metrics.get("cma_alertscore")
         if g is not None and (v is None or ev.metrics.get("ratio") is None):
             try:
                 return float(g)
@@ -117,6 +128,8 @@ def compute_severity(ev: NormalizedEvent) -> float:
 
     # GDACS 火山/干旱等:优先用官方红橙绿映射
     g = ev.metrics.get("gdacs_alertscore")
+    if g is None:
+        g = ev.metrics.get("cma_alertscore")
     if g is not None:
         return float(g)
 

@@ -33,8 +33,7 @@ def evaluate_alerts() -> list[dict]:
              WHERE e.updated_at > now() - INTERVAL '2 hours'
                AND e.status IN ('active','revised')
                AND (m.event_id IS NULL
-                    OR m.muted_until < now()
-                    OR e.severity > m.last_severity + 0.15)  -- 等级跃升突破静默
+                    OR e.severity > COALESCE(m.last_severity, 0) + 0.15)
         """)).fetchall()
 
         for r in rows:
@@ -77,8 +76,11 @@ def _match_rule(r) -> str | None:
     """
     if r.type == "earthquake":
         mag = r.magnitude_value or 0
-        # 关注区域内用更低阈值 —— 这是本系统对用户最有价值的一条规则
-        if r.in_region and mag >= settings.alert_eq_local_mag:
+        lon = float(getattr(r, "lon", 0) or 0)
+        lat = float(getattr(r, "lat", 0) or 0)
+        in_cn = 73.0 <= lon <= 135.0 and 18.0 <= lat <= 54.0
+        # 关注区域 / 中国用更低阈值，避免只剩全球大震才响
+        if (r.in_region or in_cn) and mag >= settings.alert_eq_local_mag:
             return f"地震-关注区域内 M≥{settings.alert_eq_local_mag}"
         if mag >= settings.alert_eq_global_mag:
             return f"地震-全球 M≥{settings.alert_eq_global_mag}"
@@ -103,6 +105,9 @@ def _match_rule(r) -> str | None:
         if r.confidence < settings.alert_conflict_min_confidence:
             return None
         return "冲突信号-高置信度" if not r.in_region else "冲突信号-关注区域内"
+
+    if r.type == "rainstorm":
+        return "暴雨预警-橙色以上"
 
     if r.type in ("cyclone", "flood", "volcano"):
         # 这几类走 GDACS 的橙色以上,对应 severity 约 0.6

@@ -1,1 +1,5 @@
-vp staged
+#!/usr/bin/env sh
+# Git 在仓库根目录跑钩子；staged 配置和 vp 都在 web/
+WEB="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
+export PATH="$WEB/node_modules/.bin:$PATH"
+vp staged --cwd "$WEB"

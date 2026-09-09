@@ -1,7 +1,12 @@
-# 在另一台机器上部署（含 Mark）
+# 在另一台机器上部署 / Deploy on another machine
+
+[中文 README](./README.md#中文) · [English README](./README.md#english)
 
 本仓库是**可复现安装包**：含后端、前端源码、国界/地名数据、建库 SQL、服务定义与说明。  
 **不含**数据库密码、`.env`、`secrets/`、`pgdata/`、Python 虚拟环境、`node_modules`。
+
+This repo is a **reproducible install**: backend, frontend, borders/gazetteer, schema SQL, and service files.  
+It does **not** ship database passwords, `.env`, `secrets/`, `pgdata/`, the Python venv, or `node_modules`.
 
 ## 环境要求
 
@@ -10,6 +15,16 @@
 - Python **3.13**
 - Node.js 20+（仅构建前端时需要）
 - 本机管理员权限（装库、装服务）
+
+macOS 本机部署用 Homebrew，不引入 Docker：
+
+```bash
+bash setup/macos-deploy.sh
+./start.sh --open
+```
+
+macOS 入口 / URLs：`http://127.0.0.1:5180`（Vite HMR）、`http://127.0.0.1:8001/api/health`。  
+Windows 脚本仍默认 5173 / 8000。可用环境变量覆盖。 / Windows scripts still default to 5173 / 8000.
 
 ## 1. 克隆
 
