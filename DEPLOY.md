@@ -104,8 +104,17 @@ Invoke-RestMethod http://127.0.0.1:8000/api/events?limit=3
 
 ## 6. 公网预览（可选）
 
-本机 Vite 已启动后，运行 `公网预览.bat`（需 `tools\cloudflared.exe`）。  
-快速隧道地址每次重启会变。
+本机 Vite 已启动后，用 Cloudflare 快速隧道把大屏映射到公网。地址每次重启会变；本机关机或 `./stop.sh` 后失效。演示无鉴权，勿广泛传播。
+
+macOS（默认 Vite `http://127.0.0.1:5180`）：
+
+```bash
+brew install cloudflared   # 只需一次
+./start.sh --no-open
+./公网预览.sh
+```
+
+Windows（默认 Vite `http://127.0.0.1:5173`）：运行 `公网预览.bat`（需 `tools\cloudflared.exe`）。
 
 ## 数据文件（已入库）
 

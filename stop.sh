@@ -48,7 +48,9 @@ kill_port() {
   fi
 }
 
-log "停止 API / Vite …"
+log "停止 API / Vite / Cloudflare 隧道 …"
+kill_pidfile "$LOG_DIR/cloudflared.pid"
+rm -f "$LOG_DIR/public-url.txt"
 kill_pidfile "$LOG_DIR/uvicorn.pid"
 kill_pidfile "$LOG_DIR/vite.pid"
 kill_pidfile "$ROOT/.vite-dev.pid"

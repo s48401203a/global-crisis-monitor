@@ -14,6 +14,12 @@
 
 ---
 
+### 2026-09-09 【Grok 4.6】 GitHub main + Cloudflare 公网预览
+
+- PR #1 合入 `main`：https://github.com/s48401203a/global-crisis-monitor
+- macOS `公网预览.sh` 用 cloudflared 快速隧道映射 Vite 5180；`stop.sh` 会停隧道
+- 快速隧道地址每次重启会变，本机关机后失效
+
 ### 2026-08-15 【Grok 4.6】 推送顶栏与时间窗改动
 
 - 推到 `feat/macos-local-deploy` / PR #1；含 LICENSE

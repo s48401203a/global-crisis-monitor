@@ -4,7 +4,7 @@
 
 **公开数据、本机部署的危机大屏。** 地震、暴雨预警、河道洪水、气旋、野火、冲突信号在本地入库，用地图（平面 / 地球仪）查看。
 
-[中文](#中文) · [English](#english) · [Deploy](./DEPLOY.md) · [PR](https://github.com/s48401203a/global-crisis-monitor/pull/1)
+[中文](#中文) · [English](#english) · [Deploy](./DEPLOY.md) · [GitHub](https://github.com/s48401203a/global-crisis-monitor)
 
 > Public repo · No cloud account required for core sources · Credentials stay on your machine
 

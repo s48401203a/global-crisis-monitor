@@ -19,6 +19,8 @@ export default defineConfig({
     port: 5180,
     open: true,
     strictPort: true,
+    // Cloudflare quick tunnel uses https://*.trycloudflare.com
+    allowedHosts: [".trycloudflare.com"],
     proxy: {
       "/api": {
         target: "http://127.0.0.1:8001",
