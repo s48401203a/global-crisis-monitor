@@ -4,15 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>全球综合危机监测中心</title>
-    <!-- 语言由 main.js applyUiLang 同步 title -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
-    <link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet" />
-    <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+    <!-- 语言由 main.js applyUiLang 同步 title。maplibre-gl 与样式由 Vite 打包，字体用系统栈：页面无外部运行时依赖 -->
+    <link rel="icon" href="/favicon.svg" />
   </head>
   <body>
     <!-- map-stage：平面↔地球仪收成球再展开 -->
@@ -35,16 +28,35 @@
           <span class="pulse"></span><span data-i18n="live">实时运行</span>
         </div>
         <div class="seg compact" role="tablist" aria-label="视图切换">
-          <button type="button" class="active" data-view="global" id="btnGlobal" data-i18n="global">
+          <button
+            type="button"
+            class="active"
+            data-view="global"
+            id="btnGlobal"
+            data-i18n="global"
+            role="tab"
+            aria-selected="true"
+          >
             全球总览
           </button>
-          <button type="button" data-view="local" id="btnLocal" data-i18n="local">本地专题</button>
+          <button
+            type="button"
+            data-view="local"
+            id="btnLocal"
+            data-i18n="local"
+            role="tab"
+            aria-selected="false"
+          >
+            本地专题
+          </button>
         </div>
         <div class="seg compact" role="tablist" aria-label="地图形态">
           <button
             type="button"
             class="active"
             data-mapmode="flat"
+            role="tab"
+            aria-selected="true"
             id="btnFlat"
             data-i18n="flat"
             data-i18n-title="flatTitle"
@@ -55,6 +67,8 @@
           <button
             type="button"
             data-mapmode="globe"
+            role="tab"
+            aria-selected="false"
             id="btnGlobe"
             data-i18n="globe"
             data-i18n-title="globeTitle"
@@ -68,6 +82,8 @@
             type="button"
             class="active"
             data-surface="sat"
+            role="tab"
+            aria-selected="true"
             id="btnSat"
             data-i18n="sat"
             data-i18n-title="satTitle"
@@ -78,6 +94,8 @@
           <button
             type="button"
             data-surface="topo"
+            role="tab"
+            aria-selected="false"
             id="btnTopo"
             data-i18n="topo"
             data-i18n-title="topoTitle"
@@ -124,11 +142,20 @@
             class="active"
             data-lang="zh"
             id="btnLangZh"
+            role="tab"
+            aria-selected="true"
             title="中文界面与中文地名"
           >
             中文
           </button>
-          <button type="button" data-lang="en" id="btnLangEn" title="English UI & place names">
+          <button
+            type="button"
+            data-lang="en"
+            id="btnLangEn"
+            role="tab"
+            aria-selected="false"
+            title="English UI & place names"
+          >
             EN
           </button>
         </div>
@@ -175,20 +202,45 @@
                 class="active"
                 data-range="day"
                 data-i18n="hDay"
+                role="tab"
                 aria-selected="true"
               >
                 日
               </button>
-              <button type="button" data-range="week" data-i18n="hWeek" aria-selected="false">
+              <button
+                type="button"
+                role="tab"
+                data-range="week"
+                data-i18n="hWeek"
+                aria-selected="false"
+              >
                 周
               </button>
-              <button type="button" data-range="month" data-i18n="hMonth" aria-selected="false">
+              <button
+                type="button"
+                role="tab"
+                data-range="month"
+                data-i18n="hMonth"
+                aria-selected="false"
+              >
                 月
               </button>
-              <button type="button" data-range="half" data-i18n="hHalf" aria-selected="false">
+              <button
+                type="button"
+                role="tab"
+                data-range="half"
+                data-i18n="hHalf"
+                aria-selected="false"
+              >
                 半年
               </button>
-              <button type="button" data-range="year" data-i18n="hYear" aria-selected="false">
+              <button
+                type="button"
+                role="tab"
+                data-range="year"
+                data-i18n="hYear"
+                aria-selected="false"
+              >
                 全年
               </button>
             </div>
@@ -268,6 +320,13 @@
     <div class="disclaimer" data-i18n="disclaimer">
       本系统为公开信息聚合演示，不可替代官方应急预警 · 冲突数据存在媒体偏差与延迟
     </div>
+    <!-- 窄屏（≤760px）底部标签栏：一次只展开一个面板 -->
+    <nav class="mobile-tabs" id="mobileTabs" aria-label="面板切换">
+      <button type="button" data-mtab="filter" data-i18n="mtabFilter">筛选</button>
+      <button type="button" data-mtab="feed" class="active" data-i18n="mtabFeed">事件流</button>
+      <button type="button" data-mtab="health" data-i18n="mtabHealth">数据源</button>
+      <button type="button" data-mtab="none" data-i18n="mtabMap">地图</button>
+    </nav>
     <div id="toasts"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

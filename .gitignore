@@ -43,8 +43,10 @@ service/*.exe
 tools/*.exe
 tools/cloudflared.exe
 
-# Playwright CLI local dumps
+# Playwright 本地产物
 web/.playwright-cli/
+web/test-results/
+web/playwright-report/
 
 # Local Grok session copies (resume still uses ~/.grok/sessions)
 .grok/

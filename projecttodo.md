@@ -14,6 +14,16 @@
 
 ---
 
+### 2026-09-09 【Claude Fable 5.1】 Phase 3 前端模块化与自包含
+
+- `main.js` 4834 行 → 组合根 ≈650 行 + 17 个模块：`state.js`（单一 store）、`constants.js`、`storage.js`（localStorage 单键 `crisis.v3`，自动迁移旧键）、`i18n/`、`api/client.js`、`pipeline.js`、`grade.js`/`brief.js`/`headline.js`、`breaking.js`、`panels/`、`popup/`、`tour/`、`map/{instance,projection,cosmos,labels,effects}.js`、`util/{format,geo,timing}.js`
+- 自包含：`maplibre-gl@5.6.1` 入 npm 依赖并打包；Google Fonts 改系统字体栈；`index.html` 无任何 CDN；e2e 拦截外部域名仍可加载
+- 交互：事件流改事件委托（去内联 `onclick` 与 `window.*` 全局）；条目可 Tab 聚焦 + Enter 打开；所有 seg 组同步 `aria-selected`；健康点补读屏文字
+- 窄屏（≤760px）：底部标签栏（筛选 / 事件流 / 数据源 / 地图）+ 单面板抽屉；停靠拖动在窄屏关闭；统计条落在折行顶栏下方
+- 工具链：`vp check` 开 `no-undef=error`（模块拆分漏导入会在提交前拦住）；Vitest 22 例（格式/几何/搜索/地名/分级/i18n 键一致）；Playwright 4 例（fixtures 模式：无 CDN 加载、时间窗/搜索/弹窗/地球仪/语言、图层开关与键盘、390px 抽屉与弹窗）
+- 验证：`vp check` 0 错误；`vp test` 22/22；`playwright test` 4/4；`vp build` 通过；实时 smoke 6 路径通过、0 pageerror
+- 已知：模块间仍有 12 对函数级循环引用（ESM 函数提升下可运行，无顶层求值依赖）；`region-gazetteer.js`（747 行，地名表）与 `dock-panels.js`（734 行）未再拆；控制台偶见 MapLibre worker 的 `Unimplemented type: 4`（来自外部字形服务响应，Phase 5 自托管字形时消除）
+
 ### 2026-09-09 【Claude Fable 5.1】 Phase 2 API v2 与增量推送
 
 - `/api/events` v2：`since`（含 deleted/closed）、`bbox`、`types`、`fields=summary|full`、ETag/304、gzip（全年 summary 线上 179 KB，原 2.36 MB）；`grade{band,tone,zh,en}` 服务端统一分级（`core/grade.py`，前端 `realGrade` 优先用之）

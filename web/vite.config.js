@@ -14,7 +14,10 @@ export default defineConfig({
   },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
-    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
+    // no-undef 设为 error：模块拆分时漏导入会在 vp check 阶段被拦住，而不是运行时 ReferenceError
+    rules: { "vite-plus/prefer-vite-plus-imports": "error", "no-undef": "error" },
+    env: { browser: true, es2024: true },
+    globals: { process: "readonly" },
     // 纯 JS 项目：不做 TS 类型检查（无 tsconfig，typeCheck 只会报噪音）
     options: { typeAware: false, typeCheck: false },
   },
@@ -55,6 +58,10 @@ export default defineConfig({
       "/api": "http://127.0.0.1:8001",
       "/ws": { target: "ws://127.0.0.1:8001", ws: true },
     },
+  },
+  test: {
+    include: ["test/unit/**/*.test.js"],
+    environment: "node",
   },
   build: {
     outDir: "dist",

@@ -9,6 +9,9 @@
     "preview": "vp preview --host",
     "prepare": "vp config"
   },
+  "dependencies": {
+    "maplibre-gl": "^5.6.1"
+  },
   "devDependencies": {
     "playwright": "^1.62.1",
     "vite": "npm:@voidzero-dev/vite-plus-core@0.2.9",

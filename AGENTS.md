@@ -13,7 +13,7 @@
 ## 项目结构
 
 - `app/app/`：FastAPI、APScheduler、采集器、入库与告警。`net.py` 出站代理策略；`core/sources.py` 数据源注册表（健康阈值、中英文名）。
-- `web/`：MapLibre 大屏；`web/src/` 是前端唯一编辑源；`web/dist/` 由 `vp build` 生成、不入库，后端挂载它。
+- `web/`：MapLibre 大屏；`web/src/` 是前端唯一编辑源（已模块化，见 `web/README.md` 目录图；`main.js` 只做装配，不要再往里堆业务逻辑）；`web/dist/` 由 `vp build` 生成、不入库，后端挂载它。
 - `app/app/static/data/`：后端提供的国界数据；`app/app/placeholder/`：dist 缺失时的占位页。
 - `setup/`：建库 SQL、`macos-deploy.sh`、Windows 安装脚本（`setup/windows/`）、一次性维护脚本（`setup/oneoff/`，已完成任务，勿再运行）。
 - `service/`：Windows WinSW 服务定义。
@@ -27,7 +27,8 @@
 curl -s http://127.0.0.1:8001/api/health | python3 -m json.tool   # 含 pipeline_status / proxy / warnings
 
 cd app && PYTHONUTF8=1 .venv/bin/python -m tests.run_unit          # 后端单测（无 pytest）
-cd web && npx vp check && npx vp build                             # 前端格式/lint + 构建
+cd web && npx vp check && npx vp test && npx vp build              # 前端格式/lint(no-undef) + 单测 + 构建
+cd web && ./node_modules/.bin/playwright test                      # e2e（fixtures 模式，不依赖后端）
 ```
 
 Windows 见 DEPLOY.md「Windows」小节（`启动.bat` / `停止.bat`，默认 5173 / 8000）。
@@ -41,7 +42,7 @@ Windows 见 DEPLOY.md「Windows」小节（`启动.bat` / `停止.bat`，默认 
 - 采集器出站请求一律走 `app/net.py`（`make_client` / `websocket_proxy`），不要直接 `httpx.get`。
 - 新增数据源必须同时登记到 `core/sources.py`，否则健康面板与 `/api/meta` 看不到它。
 - 不泄露或提交 `.env`、`secrets/`、`pgdata/`、日志、备份。
-- 提交前 `git diff`；`web/` 改动必须 `vp check` 通过（pre-commit 钩子会跑 `vp staged`），不要 `--no-verify`。
+- 提交前 `git diff`；`web/` 改动必须 `vp check` 通过（pre-commit 钩子会跑 `vp staged`），不要 `--no-verify`。跨模块共享的状态放 `web/src/state.js`，不要新增 `window.*` 全局或内联 `onclick`。
 
 ## 当前优先事项
 
