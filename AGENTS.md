@@ -54,4 +54,4 @@ Windows 见 DEPLOY.md「Windows」小节（`启动.bat` / `停止.bat`，默认 
 
 ## 当前优先事项
 
-Phase 0–4 已完成；2026-09-16 可靠性修复见 CHANGELOG 与 `docs/adr/0004-sync-auth-verify.md`。剩余为 Phase 5 可选增强：瓦片缓存代理/离线底图、Webhook/Telegram 告警通道、ACLED 等权威冲突源、水文源、历史回放。合并前跑 `bash scripts/verify.sh`；不要把 stub/注入模式的绿色结果当成真实验收。
+PR [#2](https://github.com/s48401203a/global-crisis-monitor/pull/2) 为可靠性交付（同步/鉴权/门禁）。协议见 `docs/adr/0004-sync-auth-verify.md` 与 README「数据语义与同步」。合并后第一步是对**业务库**做一次显式 `migrate.sh` 与启动验收（见 `projecttodo.md` 开放待办 A）。Phase 5 可选增强仍不自动开工。不要把 stub/注入模式的绿色结果当成真实验收。

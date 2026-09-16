@@ -5,14 +5,53 @@
 ## 开放待办
 
 - [x] 本机验收：usgs/gdacs/eonet/gdelt/war 有数据；GDELT 本机未 429
-- [ ] 未装 FIRMS_MAP_KEY，野火近实时火点默认关闭
-- [ ] 原仓库 TASK-A7 瓦片缓存代理仍按条件任务，本轮不实施
+- [ ] 未装 FIRMS_MAP_KEY，野火近实时火点默认关闭（能力已有，缺密钥）
+- [ ] 原仓库 TASK-A7 瓦片缓存代理仍按条件任务，无实测瓶颈前不实施
+
+### A. 合并后首次部署验证（P0）
+
+| 任务 | 现状证据 | 为何 | 范围 | 验收 |
+|---|---|---|---|---|
+| A1 业务库迁移 | `setup/migrate.sh` + `10-reliability.sql` 已在隔离库/CI 跑过；**业务库未迁** | 合并后列才存在 | 维护者对 `crisis` 显式执行 migrate；失败不记 schema_migration | `\d event` 有 `change_seq`/`severity_peak`；health 200 |
+| A2 启动与认证 | `start.sh` / `启动.command`；access 测试与 CI 已覆盖协议 | 确认本机 5180/8001 与令牌 | 不改代码 | 无令牌本机可开；`ACCESS_TOKEN` 非本机 401；WS ticket 可连 |
+| A3 采集/增量/对账 | 隔离 sync + 浏览器临时库已测协议 | 确认真源与业务库 | 观察 `/api/health`、列表是否随采集更新 | 源非全 failed；切时间窗或等对账后内容能跟上；失败时游标不乱跳 |
+| A4 回滚演练 | `backup.sh --restore` 已有 | 迁错可退 | 对**副本/备份** restore，不动生产当实验品以外的库 | restore list 通过；服务能起来 |
+
+依赖：合并 PR #2；维护者授权碰业务库。不引入队列。
+
+### B. 运行稳定性（P1，有真实运行后再做）
+
+| 任务 | 现状证据 | 为何 | 范围 | 验收 |
+|---|---|---|---|---|
+| B1 对账失败可观察 | 失败只打 `console.warn`，游标保持 | 内容漂移难发现 | 健康或 UI 提示最近一次对账成败，不改协议 | 人为让 reconcile 4xx，界面或 health 能看出，游标不变 |
+| B2 采集失败与新鲜度 | health 已有字段；README 排障表本轮已写 | 已有能力，不重复开发 | — | 按现象能对到 health 字段 |
+| B3 分页容量 | 单页默认 2000、最多约 50 页；stale≥200 走快照 | 超大窗口未在生产压过 | 有实测截断/超时再扩 | 记录 hours/条数/耗时，不先改架构 |
+| B4 备份恢复 | backup.sh 存在 | 尚未对合并后 schema 做演练 | 与 A4 合并做一次 | 见 A4 |
+
+无实测瓶颈时不做 Redis/Celery/逻辑复制。
+
+### C. 开源维护（P2）
+
+| 任务 | 现状证据 | 为何 | 范围 | 验收 |
+|---|---|---|---|---|
+| C1 CONTRIBUTING | 无独立贡献指南；README/AGENTS 有命令 | 外人不知从哪跑 verify | 一页：fork、`verify.sh`、禁止 git add .、隔离库 | 新贡献者按文档能跑单测+fixtures |
+| C2 合成样例 | `/?fixtures=test` + Playwright 已有 | 未在 README 强调（本轮已写） | 保持夹具，不接业务库做 e2e | fixtures e2e 保持绿 |
+| C3 issue 模板 | 无 | 缺 repro 清单 | bug 模板：health 摘要、hours、是否截断、无密钥 | 模板勾选即可 |
+| C4 依赖与发布 | CI audit report-only；无 Release 标签 | 本轮不打 tag | 维持 audit 报告；发布需维护者决定 | 不把 audit 当门禁直到有人值守 |
+
+已有、不要再当新功能：MapLibre 大屏、模块化前端、CI、WS ticket、版本对账、隔离集成测试、MIT LICENSE。
 
 ## 归档索引
 
 - 暂无更早归档
 
 ---
+
+### 2026-09-16 【Grok 4.6】 PR #2 交付收尾与路线图
+
+- README/DEPLOY/ADR/.env.example 与最终同步协议对齐；公开事实写入 README；开放待办拆成 A/B/C
+- 干净检出无 `.env` 时单测会因缺 `DATABASE_URL` 失败：`tests/__init__.py` 补占位 URL（回归 `test_unit_bootstrap`）
+- 不自动 merge、不打 tag、不迁业务库；GitHub Actions 已在 PR #2 跑通
 
 ### 2026-09-16 【Grok 4.6】 对账按版本补拉
 

@@ -30,6 +30,8 @@ Windows 脚本仍默认 5173 / 8000。可用环境变量覆盖。 / Windows scri
 
 出站代理：`app/.env` 的 `HTTP_PROXY_MODE=env|direct|url`。环境里若残留失效代理，所有源会静默失败；`/api/health` 的 `proxy` 与 `pipeline_status` 字段可用来确认。
 
+同步口径（最终一致，无固定追上时限）：见 README「数据语义与同步」。升级：`bash setup/migrate.sh`。回滚：`./backup.sh --restore <dump>`。本 PR 合并**不会**自动迁移业务库。无后端 UI：`/?fixtures=test`。
+
 ## 1. 克隆
 
 ```powershell

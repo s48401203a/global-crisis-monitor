@@ -2,6 +2,12 @@
 
 按阶段记录；细粒度条目见 `projecttodo.md`。日期为落地日。
 
+## 2026-09-16 · 交付收尾文档
+
+- README/DEPLOY 写清当前/峰值严重度、分页删除关闭、对账调度与最终一致边界（无固定追上时限）
+- `.env.example` 补 `ACCESS_TOKEN_ENFORCE_LOCAL`；公开事实与路线图见 README / `projecttodo.md`
+- 单测入口在无 `.env` 时提供占位 `DATABASE_URL`，干净检出可跑 `python -m tests.run_unit`
+
 ## 2026-09-16 · 对账按版本补拉，禁止 ID 集合推进游标
 
 - `GET /api/events/reconcile` 返回 `versions[{id,change_seq,status}]`；客户端比较版本后 `?ids=` 补拉

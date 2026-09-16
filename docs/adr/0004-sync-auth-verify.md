@@ -15,7 +15,7 @@ Phase 2 增量 API 在截断后仍用 `server_time` 推进水位，可能漏事�
 2. **对账返回版本**：`GET /api/events/reconcile` 返回 `versions: [{id, change_seq, status}]`（仍带 `ids` / `closed_ids`）。客户端比较本地 `change_seq` 与 `status`；落后或缺失则 `GET /api/events?ids=` 补拉。**不得**仅因 ID 集合相同就认定内容已同步。
 3. **游标**：对账成功也**不得**把 `storeSeq` 设为 `high_water`。补拉失败保持原游标。`change_seq` 在语句时分配、提交后才可见，不能当作提交顺序。
 4. **乱序与并发**：按每条 `change_seq` 合并，旧响应不能覆盖新状态。刷新与对账串行（同一把 in-flight 锁），避免快照/增量交错写坏 store。
-5. **增量不是无损**：低序号晚提交仍可能被 `since_seq` 跳过；补偿是下一轮版本对账或完整快照（stale 过多时）。一致性边界：窗口内事件在对账周期内（默认 60s，断线后立即）恢复到服务端当前 `change_seq`/`status`；不承诺瞬时无损。
+5. **增量不是无损，对账也不是 SLA**：低序号晚提交仍可能被 `since_seq` 跳过。补偿是版本对账或完整快照（stale≥200）。调度：HTTP 增量约 20s；对账约 60s，WS 打开约 1.5s 后再进入 60s，分页截断时立即对账。这是**尝试间隔**，不是恢复时限。对账/补拉失败会保持旧游标，直到某次成功才追上；不保证固定时间内必然一致。
 6. **删除/关闭/窗口**：删除不在 reconcile 集合中，客户端丢掉 extra；关闭以 `status=closed` 进入 versions 并补拉；`occurred_at` 滑出窗口后淘汰。认证仍用短期 WS ticket。
 7. **其余不变**：ingest 独立结果；`severity` / `severity_peak`；`verify.sh` 失败回传；集成测试用临时库。
 

@@ -58,6 +58,7 @@ from tests.test_access_ticket import (
     test_ticket_roundtrip,
     test_token_matches_rejects_wrong_length,
 )
+from tests.test_unit_bootstrap import test_unit_bootstrap_provides_placeholder_database_url
 
 
 def main() -> int:
@@ -99,6 +100,7 @@ def main() -> int:
         test_conflict_confidence_bands,
         test_ticket_roundtrip,
         test_token_matches_rejects_wrong_length,
+        test_unit_bootstrap_provides_placeholder_database_url,
     ]
     failed = 0
     for fn in tests:

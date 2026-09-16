@@ -47,7 +47,7 @@ This is an unofficial local demo. Not affiliated with CMA, CENC, or any governme
 
 ### 快速开始（macOS）
 
-需要 Homebrew、PostgreSQL 17、PostGIS、Python 3.13、Node.js 20+。
+需要 Homebrew、PostgreSQL 17、PostGIS、Python 3.13、Node.js 20+。前端 `npm ci` 需要 **npm 12**（与 `package.json` 的 `devEngines` / CI 一致；本机若是 npm 10，先 `npm install -g npm@12.0.2` 或按 `.github/workflows/ci.yml`）。
 
 ```bash
 git clone https://github.com/s48401203a/global-crisis-monitor.git
@@ -119,6 +119,34 @@ API（v2，均为只读 GET；列表支持 gzip 与 ETag）：
 cd app && PYTHONUTF8=1 .venv/bin/python -m tests.run_unit
 ```
 
+单测不需要 `app/.env` 或业务库。无后端时可用合成夹具看界面：`http://127.0.0.1:5180/?fixtures=test`。
+
+### 数据语义与同步（维护者）
+
+| 概念 | 行为 |
+|---|---|
+| `severity` | **当前**严重度，权威源降级时可以下降；列表/计数/告警用这个 |
+| `severity_peak` | **历史峰值**，只升不降，不参与前端计数 |
+| 分页 | `change_seq` 升序；`truncated` 时必须带 `next_cursor` 续读，不得用截断页的 `server_time` / 全局 `high_water` 当水位 |
+| 增量 | `since_seq`；含 deleted/closed，不按 `occurred_at` 过滤 |
+| 删除 | 对账集合里没有的 id，客户端丢掉 |
+| 关闭 | `status=closed` 仍可在时间窗口内显示；对账 `versions` 带 status，落后则 `ids=` 补拉 |
+| 时间窗口 | 按事件 `occurred_at`；滑出窗口后从本地 store 淘汰 |
+| 对账 | `GET /api/events/reconcile` 比 `{id,change_seq,status}`，不是只比 id 集合 |
+
+调度（尝试间隔，**不是恢复时限**）：HTTP 增量约 20s；对账约 60s；WebSocket 打开约 1.5s 后再进入 60s；分页截断时立即对账。对账或补拉失败会保持旧游标，直到某次成功。增量 `change_seq` 在语句时分配、提交后才可见，**不保证固定时间内追上**。
+
+排障：
+
+| 现象 | 先看 |
+|---|---|
+| 顶栏红 / `pipeline_status=down\|degraded` | `/api/health` 的 `proxy`、`last_error`、`last_ingest_status`（`failed`/`partial`/`empty`）；失效代理用 `HTTP_PROXY_MODE=direct` |
+| 弹出令牌或 WS 立刻断开 | `ACCESS_TOKEN`；取消输入会停止重试；错令牌会清会话再问；过期票据 4403 会静默换票 |
+| 地图有旧内容、源已更新 | 等对账或切时间窗口触发完整快照；补拉失败时游标不会前进，看浏览器控制台 `reconcile failed` |
+| 库是空的 / 启动后无点 | 采集器要联网；`/?fixtures=test` 只验证 UI；FIRMS 无 key 默认关 |
+
+升级已有库：`bash setup/migrate.sh`（`10-reliability.sql`）。回滚：停服务后 `./backup.sh --restore backups/<dump>`。合并本 PR **不会**自动迁移业务库。
+
 ### 运维（macOS）
 
 ```bash
@@ -134,9 +162,16 @@ bash setup/install-launchd.sh     # 开机自启 API + 每日 03:17 pg_dump（--
 - 若密码曾出现在聊天里，请在本机轮换 Postgres 密码
 - 公网隧道前在 `app/.env` 设置 `ACCESS_TOKEN`：非本机请求必须带 `X-Access-Token`（或 `?token=`）；`公网预览.sh` 会拒绝无令牌开放
 
-### 现状
+### 现状与公开事实
 
-本地演示可用。FIRMS 无密钥则关闭。`/api/health` 提供 `pipeline_status`（多源同时异常时顶栏红显）与代理策略（`HTTP_PROXY_MODE=env|direct|url`）。整体改造路线见 [docs/项目评审与改造方案-fable-5.1.html](./docs/项目评审与改造方案-fable-5.1.html)。欢迎 issue / PR。
+- 定位：本机演示 / 教学 / 二次开发，**不是**官方预警、不是 SaaS、没有公布用户量或准确率。
+- 能力：公开源采集 + PostGIS + MapLibre 大屏；鉴权可选；增量 + 版本对账（最终一致，见上表）。
+- 维护：公开仓库 [s48401203a/global-crisis-monitor](https://github.com/s48401203a/global-crisis-monitor)；PR [#2](https://github.com/s48401203a/global-crisis-monitor/pull/2) 含 2026-09 可靠性工作；CI 作业见 `.github/workflows/ci.yml`。
+- 证据：`CHANGELOG.md`、`docs/adr/0004-sync-auth-verify.md`、`scripts/verify.sh`。
+- 路线图：`projecttodo.md` 开放待办（合并后部署验证 → 运行稳定性 → 开源维护）。瓦片缓存 / Telegram / 新数据源仍是可选，不是现有能力。
+- 协作：可协助核对 `verify.sh`、隔离库集成测试、文档与 PR；不自动 merge、不部署生产、不代提外部申请。
+
+数据与运行时来自各公开接口及 [MapLibre GL](https://maplibre.org/)；国界等静态数据随仓库提供。各自条款以源站为准。
 
 ### 许可
 
@@ -176,7 +211,7 @@ China’s Ministry of Water Resources feed is not wired in this release, so a lo
 
 ### Quick start (macOS)
 
-Needs Homebrew, PostgreSQL 17, PostGIS, Python 3.13, Node.js 20+.
+Needs Homebrew, PostgreSQL 17, PostGIS, Python 3.13, Node.js 20+. Frontend `npm ci` expects **npm 12** (see `devEngines` / CI). If your npm is 10, install npm 12 first.
 
 ```bash
 git clone https://github.com/s48401203a/global-crisis-monitor.git
@@ -248,6 +283,25 @@ Unit tests (no pytest):
 cd app && PYTHONUTF8=1 .venv/bin/python -m tests.run_unit
 ```
 
+Unit tests do not need `app/.env` or a live database. UI without a backend: `http://127.0.0.1:5180/?fixtures=test`.
+
+### Semantics and sync (maintainers)
+
+| Concept | Behavior |
+|---|---|
+| `severity` | **Current** severity; may fall when the authoritative source downgrades. Counts and alerts use this. |
+| `severity_peak` | **Historical peak**; never decreases; not used in UI counts |
+| Pagination | `change_seq` ascending; follow `next_cursor` while `truncated`; never treat truncated `server_time` or global `high_water` as a watermark |
+| Incremental | `since_seq`; includes deleted/closed; no `occurred_at` filter |
+| Delete | IDs absent from the reconcile set are dropped on the client |
+| Close | `status=closed` can remain in the time window; versions include status; refetch via `ids=` if behind |
+| Time window | Filter on `occurred_at`; events that slide out are pruned from the local store |
+| Reconcile | Compare `{id,change_seq,status}`, not the ID set alone |
+
+Schedule (attempt interval, **not** a recovery SLA): HTTP incremental ~20s; reconcile ~60s; ~1.5s after WebSocket open then 60s; immediate reconcile if a page is truncated. Failed reconcile/refetch keeps the old cursor. `change_seq` is assigned at statement time, visible after commit — **no guaranteed catch-up deadline**.
+
+Troubleshooting: `/api/health` (`proxy`, `last_error`, `last_ingest_status`); `HTTP_PROXY_MODE=direct` if a stale proxy is set; access token cancel stops retries; `reconcile failed` in the console means the cursor did not advance. Upgrade: `bash setup/migrate.sh`. Rollback: `./backup.sh --restore`. Merging this PR does **not** migrate the business database.
+
 ### Operations (macOS)
 
 ```bash
@@ -263,9 +317,16 @@ bash setup/install-launchd.sh     # login item for the API + daily 03:17 pg_dump
 - Rotate the Postgres password if it ever appeared in chat
 - Before exposing a tunnel set `ACCESS_TOKEN` in `app/.env`: non-local requests must send `X-Access-Token` (or `?token=`); `公网预览.sh` refuses to open an unauthenticated tunnel
 
-### Status
+### Status and public facts
 
-Usable as a local demo. FIRMS stays off without a map key. `/api/health` reports `pipeline_status` (top bar turns red when several sources fail together) and the outbound proxy policy (`HTTP_PROXY_MODE=env|direct|url`). Refactor roadmap: [docs/项目评审与改造方案-fable-5.1.html](./docs/项目评审与改造方案-fable-5.1.html). Issues and PRs are welcome.
+- Local demo / teaching / forks — **not** an official warning service, not SaaS. No published user counts or accuracy claims.
+- Capabilities: public-source ingest, PostGIS, MapLibre UI, optional access token, incremental sync plus versioned reconcile (eventual consistency; see table above).
+- Maintenance: public repo [s48401203a/global-crisis-monitor](https://github.com/s48401203a/global-crisis-monitor); PR [#2](https://github.com/s48401203a/global-crisis-monitor/pull/2); CI in `.github/workflows/ci.yml`.
+- Evidence: `CHANGELOG.md`, `docs/adr/0004-sync-auth-verify.md`, `scripts/verify.sh`.
+- Roadmap: open items in `projecttodo.md`. Tile cache / Telegram / extra sources are optional, not shipped.
+- Assist: `verify.sh`, isolated-DB integration tests, docs and PRs. No auto-merge, production deploy, or third-party applications.
+
+Runtime data come from the listed public APIs and [MapLibre GL](https://maplibre.org/). Static borders ship in-tree. Each source keeps its own terms.
 
 ### License
 
