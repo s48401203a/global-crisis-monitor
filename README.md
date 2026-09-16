@@ -161,6 +161,8 @@ bash setup/install-launchd.sh     # 开机自启 API + 每日 03:17 pg_dump（--
 - 不要把数据库密码写进 issue / PR
 - 若密码曾出现在聊天里，请在本机轮换 Postgres 密码
 - 公网隧道前在 `app/.env` 设置 `ACCESS_TOKEN`：非本机请求必须带 `X-Access-Token`（或 `?token=`）；`公网预览.sh` 会拒绝无令牌开放
+- 测试令牌与 CI 服务库口令是合成/一次性容器凭据，不是业务密钥
+- `.gitignore` 不能清除 git 历史；疑似有效凭据应轮换，不要只删当前文件
 
 ### 现状与公开事实
 
@@ -171,7 +173,7 @@ bash setup/install-launchd.sh     # 开机自启 API + 每日 03:17 pg_dump（--
 - 路线图：`projecttodo.md` 开放待办（合并后部署验证 → 运行稳定性 → 开源维护）。瓦片缓存 / Telegram / 新数据源仍是可选，不是现有能力。
 - 协作：可协助核对 `verify.sh`、隔离库集成测试、文档与 PR；不自动 merge、不部署生产、不代提外部申请。
 
-数据与运行时来自各公开接口及 [MapLibre GL](https://maplibre.org/)；国界等静态数据随仓库提供。各自条款以源站为准。
+数据与运行时来自各公开接口及 [MapLibre GL](https://maplibre.org/)（BSD）。国界等静态文件随仓库提供，来源包括 Natural Earth 一类公开地理数据。各自条款以源站为准。
 
 ### 许可
 
@@ -316,6 +318,8 @@ bash setup/install-launchd.sh     # login item for the API + daily 03:17 pg_dump
 - Do not paste database passwords into issues or PRs
 - Rotate the Postgres password if it ever appeared in chat
 - Before exposing a tunnel set `ACCESS_TOKEN` in `app/.env`: non-local requests must send `X-Access-Token` (or `?token=`); `公网预览.sh` refuses to open an unauthenticated tunnel
+- Test tokens and the CI service-container password are synthetic / disposable, not production secrets
+- `.gitignore` does not erase git history; rotate suspected live credentials instead of only deleting the current file
 
 ### Status and public facts
 
@@ -326,7 +330,7 @@ bash setup/install-launchd.sh     # login item for the API + daily 03:17 pg_dump
 - Roadmap: open items in `projecttodo.md`. Tile cache / Telegram / extra sources are optional, not shipped.
 - Assist: `verify.sh`, isolated-DB integration tests, docs and PRs. No auto-merge, production deploy, or third-party applications.
 
-Runtime data come from the listed public APIs and [MapLibre GL](https://maplibre.org/). Static borders ship in-tree. Each source keeps its own terms.
+Runtime data come from the listed public APIs and [MapLibre GL](https://maplibre.org/) (BSD). Static borders ship in-tree (including Natural Earth-class public geodata). Each source keeps its own terms.
 
 ### License
 

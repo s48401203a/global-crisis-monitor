@@ -15,7 +15,9 @@ backups/
 .vite-dev.port
 
 # Python environments and generated files
+app/.venv
 app/.venv/
+*.dump
 **/__pycache__/
 *.py[cod]
 *.pyo
