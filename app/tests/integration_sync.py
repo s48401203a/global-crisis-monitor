@@ -131,6 +131,46 @@ def main() -> int:
     rj = rec.json()
     check("reconcile omits deleted", eid not in set(rj.get("ids") or []))
     check("reconcile has high_water", int(rj.get("high_water") or 0) > 0)
+    check("reconcile versions list", isinstance(rj.get("versions"), list) and len(rj["versions"]) > 0)
+
+    # ID 不变但内容变：versions.change_seq 必须上升，ids 补拉返回新内容
+    with get_session() as s:
+        row = s.execute(text("""
+            SELECT id, change_seq FROM event
+             WHERE headline LIKE '[IT-SYNC] p%' AND status = 'active'
+             ORDER BY id LIMIT 1
+        """)).fetchone()
+        eid_u, seq_u = int(row[0]), int(row[1])
+        s.execute(text("""
+            UPDATE event SET severity = 0.91,
+                   change_seq = nextval('event_change_seq'),
+                   updated_at = clock_timestamp()
+             WHERE id = :e
+        """), {"e": eid_u})
+        eid_c = s.execute(text("""
+            SELECT id FROM event
+             WHERE headline LIKE '[IT-SYNC] p%' AND status = 'active' AND id <> :e
+             ORDER BY id DESC LIMIT 1
+        """), {"e": eid_u}).scalar()
+        s.execute(text("""
+            UPDATE event SET status = 'closed', closed_at = now(),
+                   change_seq = nextval('event_change_seq'),
+                   updated_at = clock_timestamp()
+             WHERE id = :e
+        """), {"e": eid_c})
+    rec_v = client.get("/api/events/reconcile?hours=8760").json()
+    by_v = {int(v["id"]): v for v in rec_v.get("versions") or []}
+    check("content edit bumps version seq", eid_u in by_v and by_v[eid_u]["change_seq"] > seq_u,
+          str(by_v.get(eid_u)))
+    check("closed status in versions", eid_c in by_v and by_v[eid_c]["status"] == "closed",
+          str(by_v.get(eid_c)))
+    check("closed_ids contains closed event", eid_c in set(rec_v.get("closed_ids") or []))
+    pulled = client.get(f"/api/events?ids={eid_u},{eid_c}&fields=summary&limit=10").json()
+    props = {f["properties"]["id"]: f["properties"] for f in pulled.get("features") or []}
+    check("ids refetch updated severity", abs(float(props.get(eid_u, {}).get("severity") or 0) - 0.91) < 1e-6,
+          str(props.get(eid_u)))
+    check("ids refetch includes closed", (props.get(eid_c) or {}).get("status") == "closed",
+          str(props.get(eid_c)))
 
     # 延迟提交：先看到 B，A 后提交则增量可能漏，对账必须补上
     engine_mod = __import__("app.db", fromlist=["engine"])

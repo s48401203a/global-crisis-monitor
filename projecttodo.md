@@ -14,6 +14,12 @@
 
 ---
 
+### 2026-09-16 【Grok 4.6】 对账按版本补拉
+
+- 根因：`applyReconcile` 只比 ID，且 `reconcileNow` 在无 missing 时把 `storeSeq` 推到 `high_water`
+- 对账返回 `versions`；内容/关闭变化会 refetch；删除当 extra 丢掉；补拉失败不推进游标
+- 完成：2026-09-16（Grok 4.6）
+
 ### 2026-09-16 【Grok 4.6】 可靠性：验收、鉴权、同步
 
 - 修复 `verify.sh` 子 shell 失败误报 ALL PASS；`scripts/test_verify_gate.sh` 注入单测/lint/前端/构建/e2e/健康均非零

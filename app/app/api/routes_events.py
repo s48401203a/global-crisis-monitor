@@ -88,10 +88,13 @@ def reconcile_events(
         server_time = s.execute(text("SELECT clock_timestamp() AT TIME ZONE 'UTC'")).scalar()
     ids = [int(r.id) for r in rows]
     closed_ids = [int(r.id) for r in rows if r.status == "closed"]
+    versions = [{"id": int(r.id), "change_seq": int(r.change_seq or 0), "status": r.status}
+                for r in rows]
     return {
         "hours": hours,
         "ids": ids,
         "closed_ids": closed_ids,
+        "versions": versions,
         "count": len(ids),
         "high_water": int(hw or 0),
         "server_time": _iso_z(server_time),
@@ -113,12 +116,14 @@ def list_events(
     min_severity: float = 0.0,
     fields: str = Query("full", pattern="^(summary|full)$"),
     limit: int = Query(2000, ge=1, le=10000),
+    ids: str | None = Query(None, description="逗号分隔的 id，用于对账补拉；含 closed/deleted"),
 ):
     """GeoJSON FeatureCollection。
 
     协议：
     - 快照（无 since_seq/since）：窗口内未删除事件，按 change_seq 升序稳定分页。
     - 增量（since_seq 或 since）：不按 occurred_at 过滤，以便投递窗口外的 deleted/closed。
+    - ids=：按 id 取当前内容（含 closed/deleted），供对账补拉，不推进水位。
     - 截断时 meta.truncated=true 且给出 next_cursor；客户端必须续读，不得把本页
       server_time / high_water 当作已完整水位。
     """
@@ -126,14 +131,29 @@ def list_events(
     clauses: list[str] = ["severity >= :ms"]
     params: dict = {"h": str(hours), "ms": min_severity, "lim": limit}
 
+    id_list: list[int] = []
+    if ids:
+        try:
+            id_list = [int(x) for x in ids.split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(400, "ids 应为整数列表")
+        if id_list:
+            clauses.append("id = ANY(:ids)")
+            params["ids"] = id_list
+            incremental = False
+
     watermark = cursor
-    if watermark is None and since_seq is not None:
+    if id_list:
+        watermark = None
+    elif watermark is None and since_seq is not None:
         watermark = since_seq
     if watermark is not None:
         clauses.append("change_seq > :wm")
         params["wm"] = int(watermark)
 
-    if incremental:
+    if id_list:
+        pass
+    elif incremental:
         if since is not None and since_seq is None and cursor is None:
             clauses.append("updated_at > :since")
             params["since"] = since

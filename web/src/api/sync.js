@@ -19,9 +19,21 @@ export function nextCursorFromMeta(meta) {
 
 export function watermarkFromMeta(meta) {
   if (!shouldAdvanceCursor(meta)) return null;
-  if (meta.page_high_water != null) return Number(meta.page_high_water);
-  if (meta.high_water != null) return Number(meta.high_water);
-  return null;
+  // 只用本页最后一条已读 change_seq。全局 high_water 含未读/未提交可见序号，不能当水位。
+  if (meta.page_high_water == null || meta.page_high_water === "") return null;
+  const n = Number(meta.page_high_water);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function cursorAfterReconcile(prevSeq, { failed } = {}) {
+  void failed;
+  // 对账不得把 storeSeq 推到 high_water：序列分配早于提交，且窗口外事件也会抬高全局最大值。
+  return prevSeq;
+}
+
+export function seqOf(feature) {
+  const n = Number(feature?.properties?.change_seq);
+  return Number.isFinite(n) ? n : 0;
 }
 
 export function mergeIncremental(store, features) {
@@ -30,9 +42,11 @@ export function mergeIncremental(store, features) {
     const p = f.properties || {};
     if (p.id == null) continue;
     if (p.status === "deleted") {
-      if (store.delete(p.id)) changed++;
+      if (store.delete(p.id) || store.delete(Number(p.id))) changed++;
       continue;
     }
+    const cur = store.get(p.id) || store.get(Number(p.id));
+    if (cur && seqOf(f) < seqOf(cur)) continue;
     store.set(p.id, f);
     changed++;
   }
@@ -71,31 +85,75 @@ export function inTimeWindow(feature, hours, nowMs) {
   return t >= nowMs - Number(hours) * 3600 * 1000;
 }
 
-export function applyReconcile(store, payload, hours, nowMs) {
-  const ids = new Set((payload?.ids || []).map((x) => Number(x)));
-  const missing = [];
-  const extra = [];
-  for (const id of ids) {
-    if (!store.has(id)) missing.push(id);
-  }
-  for (const [id, f] of store.entries()) {
-    if (!ids.has(Number(id))) {
-      if (!inTimeWindow(f, hours, nowMs) || f?.properties?.status === "deleted") {
-        extra.push(id);
-      } else if (!ids.has(Number(id))) {
-        extra.push(id);
-      }
-    }
-  }
-  for (const id of extra) store.delete(id);
-  return { missing, extra, matched: ids.size - missing.length };
+function storeGet(store, id) {
+  if (store.has(id)) return store.get(id);
+  if (store.has(Number(id))) return store.get(Number(id));
+  return undefined;
 }
 
-export function buildEventsQuery({ hours, limit = PAGE_LIMIT, sinceSeq, cursor, full }) {
+export function normalizeReconcileVersions(payload) {
+  if (Array.isArray(payload?.versions) && payload.versions.length) {
+    return payload.versions
+      .map((v) => ({
+        id: Number(v.id),
+        change_seq: Number(v.change_seq) || 0,
+        status: v.status || "active",
+      }))
+      .filter((v) => Number.isFinite(v.id));
+  }
+  const closed = new Set((payload?.closed_ids || []).map((x) => Number(x)));
+  return (payload?.ids || [])
+    .map((id) => ({
+      id: Number(id),
+      change_seq: 0,
+      status: closed.has(Number(id)) ? "closed" : "active",
+    }))
+    .filter((v) => Number.isFinite(v.id));
+}
+
+export function applyReconcile(store, payload, hours, nowMs) {
+  void hours;
+  void nowMs;
+  const versions = normalizeReconcileVersions(payload);
+  const byId = new Map(versions.map((v) => [v.id, v]));
+  const missing = [];
+  const stale = [];
+  const extra = [];
+  for (const v of versions) {
+    const f = storeGet(store, v.id);
+    if (!f) {
+      missing.push(v.id);
+      continue;
+    }
+    const localSeq = seqOf(f);
+    const localStatus = f.properties?.status || "active";
+    const seqBehind = v.change_seq > 0 && localSeq < v.change_seq;
+    const statusBehind = v.status && v.status !== localStatus;
+    if (seqBehind || statusBehind) stale.push(v.id);
+  }
+  for (const id of store.keys()) {
+    if (!byId.has(Number(id))) extra.push(id);
+  }
+  for (const id of extra) store.delete(id);
+  const refetch = [...new Set([...missing, ...stale])];
+  return {
+    missing,
+    stale,
+    extra,
+    refetch,
+    matched: versions.length - missing.length,
+  };
+}
+
+export function buildEventsQuery({ hours, limit = PAGE_LIMIT, sinceSeq, cursor, full, ids } = {}) {
   const params = new URLSearchParams();
-  params.set("hours", String(hours));
+  params.set("hours", String(hours ?? 24));
   params.set("limit", String(limit));
   params.set("fields", "summary");
+  if (ids && ids.length) {
+    params.set("ids", ids.join(","));
+    return `/api/events?${params.toString()}`;
+  }
   if (!full && sinceSeq != null && sinceSeq !== "") {
     params.set("since_seq", String(sinceSeq));
   }

@@ -12,7 +12,9 @@ import { auth } from "./auth.js";
 import {
   PAGE_LIMIT,
   applyReconcile,
+  buildEventsQuery,
   collectPages,
+  cursorAfterReconcile,
   mergeIncremental,
   pruneStoreByWindow,
   replaceSnapshot,
@@ -80,14 +82,20 @@ async function fetchJson(url) {
   return er.json();
 }
 
+function runSync(fn) {
+  const start = () => {
+    const p = Promise.resolve().then(fn);
+    state.refreshInFlight = p.finally(() => {
+      if (state.refreshInFlight === p) state.refreshInFlight = null;
+    });
+    return p;
+  };
+  if (state.refreshInFlight) return state.refreshInFlight.then(start, start);
+  return start();
+}
+
 async function refresh({ full = false } = {}) {
-  if (state.refreshInFlight) return state.refreshInFlight;
-  state.refreshInFlight = refreshBody({ full });
-  try {
-    return await state.refreshInFlight;
-  } finally {
-    state.refreshInFlight = null;
-  }
+  return runSync(() => refreshBody({ full }));
 }
 
 async function refreshBody({ full = false } = {}) {
@@ -133,21 +141,60 @@ async function refreshBody({ full = false } = {}) {
   }
 }
 
+async function fetchByIds(ids) {
+  const features = [];
+  const uniq = [...new Set(ids.map((x) => Number(x)).filter((n) => Number.isFinite(n)))];
+  for (let i = 0; i < uniq.length; i += 200) {
+    const chunk = uniq.slice(i, i + 200);
+    const url = buildEventsQuery({
+      hours: selectedHours(),
+      limit: Math.max(chunk.length, 1),
+      ids: chunk,
+    });
+    const fc = await fetchJson(url);
+    if (Array.isArray(fc.features)) features.push(...fc.features);
+  }
+  return features;
+}
+
+async function reconcileBody() {
+  const hours = selectedHours();
+  const r = await apiFetch(`/api/events/reconcile?hours=${encodeURIComponent(hours)}`, {
+    cache: "no-store",
+  });
+  if (!r.ok) throw new Error("reconcile " + r.status);
+  const payload = await r.json();
+  const prevSeq = state.storeSeq;
+  const diff = applyReconcile(featureStore, payload, Number(hours), Date.now());
+  if (diff.refetch.length >= 200) {
+    await refreshBody({ full: true });
+    return;
+  }
+  if (diff.refetch.length) {
+    try {
+      const fetched = await fetchByIds(diff.refetch);
+      mergeIncremental(featureStore, fetched);
+    } catch (err) {
+      state.storeSeq = cursorAfterReconcile(prevSeq, {
+        refetch: diff.refetch,
+        applied: false,
+        failed: true,
+      });
+      throw err;
+    }
+  }
+  state.storeSeq = cursorAfterReconcile(prevSeq, {
+    refetch: diff.refetch,
+    applied: true,
+    failed: false,
+    highWater: payload.high_water,
+  });
+  publishStore();
+}
+
 async function reconcileNow() {
   try {
-    const hours = selectedHours();
-    const r = await apiFetch(`/api/events/reconcile?hours=${encodeURIComponent(hours)}`, {
-      cache: "no-store",
-    });
-    if (!r.ok) throw new Error("reconcile " + r.status);
-    const payload = await r.json();
-    const diff = applyReconcile(featureStore, payload, Number(hours), Date.now());
-    if (diff.missing.length) {
-      await refresh({ full: true });
-      return;
-    }
-    if (payload.high_water != null) state.storeSeq = Number(payload.high_water);
-    publishStore();
+    await runSync(() => reconcileBody());
   } catch (e) {
     console.warn("reconcile failed", e);
   }

@@ -2,6 +2,12 @@
 
 按阶段记录；细粒度条目见 `projecttodo.md`。日期为落地日。
 
+## 2026-09-16 · 对账按版本补拉，禁止 ID 集合推进游标
+
+- `GET /api/events/reconcile` 返回 `versions[{id,change_seq,status}]`；客户端比较版本后 `?ids=` 补拉
+- 对账不再把 `storeSeq` 推到全局 `high_water`；补拉失败保持原游标
+- 按 `change_seq` 合并，乱序旧响应不能覆盖新状态；刷新与对账串行
+
 ## 2026-09-16 · 可靠性：验收、鉴权、同步
 
 - `scripts/verify.sh` 失败回传父进程；失败注入脚本覆盖单测/lint/前端/构建/e2e/健康

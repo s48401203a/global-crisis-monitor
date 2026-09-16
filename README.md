@@ -95,7 +95,7 @@ API（v2，均为只读 GET；列表支持 gzip 与 ETag）：
 
 | 端点 | 说明 |
 |------|------|
-| `/api/events?hours&since_seq&cursor&since&bbox&types&category&min_severity&fields=summary\|full&limit` | GeoJSON 事件；按 `change_seq` 稳定分页。截断时必须续读 `next_cursor`，不得把截断页水位当完整。增量用 `since_seq`（含 deleted/closed）；`GET /api/events/reconcile` 对账 |
+| `/api/events?hours&since_seq&cursor&since&ids&bbox&types&category&min_severity&fields=summary\|full&limit` | GeoJSON 事件；按 `change_seq` 稳定分页。截断时必须续读 `next_cursor`。增量用 `since_seq`。对账 `GET /api/events/reconcile` 返回版本；内容落后则 `ids=` 补拉，不得用全局 `high_water` 推进游标 |
 | `/api/events/{id}` | 详情 + observations + alerts |
 | `/api/alerts?since&rule&limit` | 告警历史 |
 | `/api/stats?hours&bbox` | 按类型/国家分桶，聚合信号与真实事件分列 |
@@ -224,7 +224,7 @@ API (v2, read-only GET; lists are gzip + ETag):
 
 | Endpoint | Role |
 |------|------|
-| `/api/events?hours&since_seq&cursor&since&bbox&types&category&min_severity&fields=summary\|full&limit` | GeoJSON events; stable `change_seq` pages. Do not advance the watermark on a truncated page. Deltas use `since_seq` (includes deleted/closed). Reconcile with `GET /api/events/reconcile` |
+| `/api/events?hours&since_seq&cursor&since&ids&bbox&types&category&min_severity&fields=summary\|full&limit` | GeoJSON events; stable `change_seq` pages. Reconcile returns per-id versions; refetch with `ids=` when content is behind. Never advance the cursor to global `high_water` |
 | `/api/events/{id}` | Detail + observations + alerts |
 | `/api/alerts?since&rule&limit` | Alert history |
 | `/api/stats?hours&bbox` | Buckets by type/country; aggregates split from real events |

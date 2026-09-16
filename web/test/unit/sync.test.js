@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   applyReconcile,
   buildEventsQuery,
+  cursorAfterReconcile,
   mergeIncremental,
   nextCursorFromMeta,
   pruneStoreByWindow,
@@ -64,6 +65,101 @@ describe("sync protocol", () => {
     expect(diff.missing).toEqual([3]);
     expect(store.has(1)).toBe(false);
     expect(store.has(2)).toBe(true);
+  });
+
+  it("same id with newer change_seq is stale content, not already synced", () => {
+    const store = new Map();
+    store.set(1, feat(1, { change_seq: 10, status: "active", severity: 0.4, lat: 1 }));
+    const diff = applyReconcile(
+      store,
+      {
+        versions: [{ id: 1, change_seq: 20, status: "active" }],
+        ids: [1],
+        high_water: 99,
+      },
+      24,
+      Date.now(),
+    );
+    expect(diff.missing).toEqual([]);
+    expect(diff.stale).toEqual([1]);
+    expect(diff.refetch).toEqual([1]);
+  });
+
+  it("active becoming closed is a refetch even if the id already exists", () => {
+    const store = new Map();
+    store.set(1, feat(1, { change_seq: 10, status: "active" }));
+    const diff = applyReconcile(
+      store,
+      {
+        versions: [{ id: 1, change_seq: 11, status: "closed" }],
+        ids: [1],
+        closed_ids: [1],
+        high_water: 11,
+      },
+      24,
+      Date.now(),
+    );
+    expect(diff.missing).toEqual([]);
+    expect(diff.refetch).toContain(1);
+    expect(store.has(1)).toBe(true);
+  });
+
+  it("deleted extra is dropped from the store", () => {
+    const store = new Map();
+    store.set(1, feat(1, { change_seq: 3, status: "active" }));
+    store.set(2, feat(2, { change_seq: 4, status: "active" }));
+    applyReconcile(
+      store,
+      { versions: [{ id: 2, change_seq: 4, status: "active" }], ids: [2] },
+      24,
+      Date.now(),
+    );
+    expect(store.has(1)).toBe(false);
+    expect(store.has(2)).toBe(true);
+  });
+
+  it("late lower-seq update still refetches when local version is behind", () => {
+    const store = new Map();
+    store.set(1, feat(1, { change_seq: 5, status: "active", severity: 0.3 }));
+    const diff = applyReconcile(
+      store,
+      {
+        versions: [{ id: 1, change_seq: 8, status: "active" }],
+        ids: [1],
+        high_water: 100,
+      },
+      24,
+      Date.now(),
+    );
+    expect(diff.refetch).toEqual([1]);
+  });
+
+  it("does not treat global high_water as a safe incremental watermark", () => {
+    expect(watermarkFromMeta({ truncated: false, complete: true, high_water: 900 })).toBeNull();
+  });
+
+  it("failed refetch must not advance the cursor", () => {
+    expect(
+      cursorAfterReconcile(40, { refetch: [1], applied: false, failed: true, highWater: 900 }),
+    ).toBe(40);
+    expect(
+      cursorAfterReconcile(40, { refetch: [], applied: true, failed: false, highWater: 900 }),
+    ).toBe(40);
+  });
+
+  it("out-of-order older change_seq does not clobber newer local feature", () => {
+    const store = new Map();
+    store.set(1, feat(1, { change_seq: 20, severity: 0.9, status: "active" }));
+    mergeIncremental(store, [feat(1, { change_seq: 15, severity: 0.2, status: "active" })]);
+    expect(store.get(1).properties.severity).toBe(0.9);
+    expect(store.get(1).properties.change_seq).toBe(20);
+  });
+
+  it("interleaved older snapshot merge does not overwrite a newer incremental", () => {
+    const store = new Map();
+    mergeIncremental(store, [feat(1, { change_seq: 30, severity: 0.7, status: "revised" })]);
+    mergeIncremental(store, [feat(1, { change_seq: 12, severity: 0.1, status: "active" })]);
+    expect(store.get(1).properties.severity).toBe(0.7);
   });
 
   it("builds snapshot vs incremental query strings", () => {

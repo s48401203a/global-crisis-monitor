@@ -41,7 +41,9 @@ def meta():
             "cursor": "change_seq",
             "snapshot": "GET /api/events (paginated via cursor/next_cursor)",
             "changes": "GET /api/events?since_seq=",
-            "reconcile": "GET /api/events/reconcile",
+            "reconcile": "GET /api/events/reconcile returns versions[{id,change_seq,status}]",
+            "refetch": "GET /api/events?ids= for stale/missing versions; do not advance cursor",
             "truncated": "do not advance watermark until complete=true",
+            "high_water": "advisory only; never a safe incremental cursor",
         },
     }
