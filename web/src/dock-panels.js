@@ -1,9 +1,10 @@
+import { getPref, setPref } from "./storage.js";
+
 /**
  * 浮动信息框：标题栏拖动；面板贴窗口边缘即收成名称签
  *（不要求指针顶到屏幕边）；左右竖排、上下横排；再点名称签展开。
  */
 
-const STORAGE_KEY = "crisis_panel_docks_v2";
 const SNAP_PANEL = 28;
 const SNAP_POINTER = 56;
 const SNAP_PREVIEW = 56;
@@ -70,22 +71,12 @@ function clamp(n, lo, hi) {
 }
 
 function loadStates() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const data = JSON.parse(raw);
-    return data && typeof data === "object" ? data : {};
-  } catch {
-    return {};
-  }
+  const data = getPref("docks");
+  return data && typeof data === "object" ? data : {};
 }
 
 function saveStates() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(states));
-  } catch {
-    /* ignore quota / private mode */
-  }
+  setPref("docks", states);
 }
 
 function defaultWidth(spec) {
@@ -699,6 +690,17 @@ export function visibleShellInsets() {
 
 export function initDockablePanels(opts = {}) {
   if (typeof opts.getTitle === "function") titleResolver = opts.getTitle;
+  // 窄屏：面板由 CSS 抽屉接管，不做拖动/贴边
+  if (isCompactViewport()) {
+    window.addEventListener(
+      "resize",
+      () => {
+        if (!isCompactViewport()) initDockablePanels(opts);
+      },
+      { once: true },
+    );
+    return;
+  }
   states = loadStates();
   for (const spec of SPECS) {
     const el = document.querySelector(spec.sel);

@@ -10,7 +10,7 @@ It does **not** ship database passwords, `.env`, `secrets/`, `pgdata/`, the Pyth
 
 ## 环境要求
 
-- Windows 10/11（规格锁定；Linux/Mac 需自行改路径与 WinSW）
+- macOS（Homebrew，当前主要开发平台）或 Windows 10/11（WinSW 服务化；Linux 需自行改路径）
 - PostgreSQL **17.x** + **PostGIS 3.6.x**
 - Python **3.13**
 - Node.js 20+（仅构建前端时需要）
@@ -23,8 +23,14 @@ bash setup/macos-deploy.sh
 ./start.sh --open
 ```
 
-macOS 入口 / URLs：`http://127.0.0.1:5180`（Vite HMR）、`http://127.0.0.1:8001/api/health`。  
+访达双击：仓库根目录 `启动.command` / `停止.command`。
+
+macOS 入口 / URLs：`http://127.0.0.1:5180`（Vite HMR）、`http://127.0.0.1:8001/api/health`。开机自启与备份：`bash setup/install-launchd.sh`；一键验收：`bash scripts/verify.sh`（严格模式 API 未运行记失败；`--quick` 可跳过 e2e/运行面并列出跳过项）。已有库升级：`bash setup/migrate.sh`（含 `10-reliability.sql`，与记账同一事务）。  
 Windows 脚本仍默认 5173 / 8000。可用环境变量覆盖。 / Windows scripts still default to 5173 / 8000.
+
+出站代理：`app/.env` 的 `HTTP_PROXY_MODE=env|direct|url`。环境里若残留失效代理，所有源会静默失败；`/api/health` 的 `proxy` 与 `pipeline_status` 字段可用来确认。
+
+同步口径（最终一致，无固定追上时限）：见 README「数据语义与同步」。升级：`bash setup/migrate.sh`。回滚：`./backup.sh --restore <dump>`。本 PR 合并**不会**自动迁移业务库。无后端 UI：`/?fixtures=test`。
 
 ## 1. 克隆
 
@@ -77,9 +83,9 @@ $env:PYTHONUTF8=1
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-服务化见 `service\crisis-api.xml`（工作目录改为本机路径）与 `setup\_install_service.ps1`。
+服务化见 `service\crisis-api.xml`（工作目录改为本机路径）与 `setup\windows\_install_service.ps1`。
 
-后端会**优先挂载** `web\dist`（Vite 构建产物）。若没有 `dist\index.html`，回退 `app\app\static`。
+后端挂载 `web\dist`（Vite 构建产物）。若没有 `dist\index.html`，会显示一个"请先构建"占位页，API 照常可用。
 
 ## 4. 前端
 

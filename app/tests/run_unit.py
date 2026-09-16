@@ -25,12 +25,40 @@ from tests.test_alerts import (
     test_match_rule_rainstorm,
     test_match_rule_war_baseline_skipped,
 )
+from tests.test_net_sources import (
+    test_firms_disabled_without_key,
+    test_pipeline_status_thresholds,
+    test_proxy_mode_direct_ignores_env,
+    test_proxy_mode_env_default_and_invalid_falls_back,
+    test_proxy_mode_url_redacts_credentials,
+    test_sources_registry_covers_all_collectors_and_emsc,
+)
+from tests.test_grade import (
+    test_cma_levels_and_flood_ratio,
+    test_conflict_confidence_bands,
+    test_cyclone_and_wildfire_units,
+    test_earthquake_bands_and_tones,
+    test_fmt_num_matches_frontend,
+)
+from tests.test_phase1_collectors import (
+    test_alert_armed_clash_requires_daily_count_threshold,
+    test_firms_cluster_merges_pixels_and_drops_singletons,
+    test_gdelt_export_aggregates_country_day_single_row,
+    test_gdelt_second_slot_accumulates_into_same_row,
+    test_gdelt_single_hit_country_dropped,
+    test_wildfire_severity_uses_frp_when_unit_mw,
+)
 from tests.test_parse_dt_and_severity import (
     test_eonet_naive_is_utc,
     test_flood_ratio_high_small_river_alertable,
     test_gdacs_naive_is_utc,
     test_war_baseline_does_not_alert,
 )
+from tests.test_access_ticket import (
+    test_ticket_roundtrip,
+    test_token_matches_rejects_wrong_length,
+)
+from tests.test_unit_bootstrap import test_unit_bootstrap_provides_placeholder_database_url
 
 
 def main() -> int:
@@ -53,6 +81,26 @@ def main() -> int:
         test_match_rule_eq_china_m4,
         test_match_rule_eq_tiny_skipped,
         test_match_rule_war_baseline_skipped,
+        test_proxy_mode_direct_ignores_env,
+        test_proxy_mode_url_redacts_credentials,
+        test_proxy_mode_env_default_and_invalid_falls_back,
+        test_sources_registry_covers_all_collectors_and_emsc,
+        test_firms_disabled_without_key,
+        test_pipeline_status_thresholds,
+        test_gdelt_export_aggregates_country_day_single_row,
+        test_gdelt_second_slot_accumulates_into_same_row,
+        test_gdelt_single_hit_country_dropped,
+        test_firms_cluster_merges_pixels_and_drops_singletons,
+        test_wildfire_severity_uses_frp_when_unit_mw,
+        test_alert_armed_clash_requires_daily_count_threshold,
+        test_fmt_num_matches_frontend,
+        test_earthquake_bands_and_tones,
+        test_cyclone_and_wildfire_units,
+        test_cma_levels_and_flood_ratio,
+        test_conflict_confidence_bands,
+        test_ticket_roundtrip,
+        test_token_matches_rejects_wrong_length,
+        test_unit_bootstrap_provides_placeholder_database_url,
     ]
     failed = 0
     for fn in tests:

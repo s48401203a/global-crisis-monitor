@@ -5,14 +5,118 @@
 ## 开放待办
 
 - [x] 本机验收：usgs/gdacs/eonet/gdelt/war 有数据；GDELT 本机未 429
-- [ ] 未装 FIRMS_MAP_KEY，野火近实时火点默认关闭
-- [ ] 原仓库 TASK-A7 瓦片缓存代理仍按条件任务，本轮不实施
+- [ ] 未装 FIRMS_MAP_KEY，野火近实时火点默认关闭（能力已有，缺密钥）
+- [ ] 原仓库 TASK-A7 瓦片缓存代理仍按条件任务，无实测瓶颈前不实施
+
+### A. 合并后首次部署验证（P0）
+
+| 任务 | 现状证据 | 为何 | 范围 | 验收 |
+|---|---|---|---|---|
+| A1 业务库迁移 | `setup/migrate.sh` + `10-reliability.sql` 已在隔离库/CI 跑过；**业务库未迁** | 合并后列才存在 | 维护者对 `crisis` 显式执行 migrate；失败不记 schema_migration | `\d event` 有 `change_seq`/`severity_peak`；health 200 |
+| A2 启动与认证 | `start.sh` / `启动.command`；access 测试与 CI 已覆盖协议 | 确认本机 5180/8001 与令牌 | 不改代码 | 无令牌本机可开；`ACCESS_TOKEN` 非本机 401；WS ticket 可连 |
+| A3 采集/增量/对账 | 隔离 sync + 浏览器临时库已测协议 | 确认真源与业务库 | 观察 `/api/health`、列表是否随采集更新 | 源非全 failed；切时间窗或等对账后内容能跟上；失败时游标不乱跳 |
+| A4 回滚演练 | `backup.sh --restore` 已有 | 迁错可退 | 对**副本/备份** restore，不动生产当实验品以外的库 | restore list 通过；服务能起来 |
+
+依赖：合并 PR #2；维护者授权碰业务库。不引入队列。
+
+### B. 运行稳定性（P1，有真实运行后再做）
+
+| 任务 | 现状证据 | 为何 | 范围 | 验收 |
+|---|---|---|---|---|
+| B1 对账失败可观察 | 失败只打 `console.warn`，游标保持 | 内容漂移难发现 | 健康或 UI 提示最近一次对账成败，不改协议 | 人为让 reconcile 4xx，界面或 health 能看出，游标不变 |
+| B2 采集失败与新鲜度 | health 已有字段；README 排障表本轮已写 | 已有能力，不重复开发 | — | 按现象能对到 health 字段 |
+| B3 分页容量 | 单页默认 2000、最多约 50 页；stale≥200 走快照 | 超大窗口未在生产压过 | 有实测截断/超时再扩 | 记录 hours/条数/耗时，不先改架构 |
+| B4 备份恢复 | backup.sh 存在 | 尚未对合并后 schema 做演练 | 与 A4 合并做一次 | 见 A4 |
+
+无实测瓶颈时不做 Redis/Celery/逻辑复制。
+
+### C. 开源维护（P2）
+
+| 任务 | 现状证据 | 为何 | 范围 | 验收 |
+|---|---|---|---|---|
+| C1 CONTRIBUTING | 无独立贡献指南；README/AGENTS 有命令 | 外人不知从哪跑 verify | 一页：fork、`verify.sh`、禁止 git add .、隔离库 | 新贡献者按文档能跑单测+fixtures |
+| C2 合成样例 | `/?fixtures=test` + Playwright 已有 | 未在 README 强调（本轮已写） | 保持夹具，不接业务库做 e2e | fixtures e2e 保持绿 |
+| C3 issue 模板 | 无 | 缺 repro 清单 | bug 模板：health 摘要、hours、是否截断、无密钥 | 模板勾选即可 |
+| C4 依赖与发布 | CI audit report-only；无 Release 标签 | 本轮不打 tag | 维持 audit 报告；发布需维护者决定 | 不把 audit 当门禁直到有人值守 |
+
+已有、不要再当新功能：MapLibre 大屏、模块化前端、CI、WS ticket、版本对账、隔离集成测试、MIT LICENSE。
 
 ## 归档索引
 
 - 暂无更早归档
 
 ---
+
+### 2026-09-16 【Grok 4.6】 公开内容与信息风险检查
+
+- 当前树去掉归档页过期演示隧道主机名、changelog 中的本机绝对路径；`.gitignore` 补 `app/.venv` 与 `*.dump`
+- git 历史仍可能含上述主机名；不改写历史、不轮换任何账号。测试令牌与 CI `postgres:ci` 为合成/一次性容器凭据
+
+### 2026-09-16 【Grok 4.6】 PR #2 交付收尾与路线图
+
+- README/DEPLOY/ADR/.env.example 与最终同步协议对齐；公开事实写入 README；开放待办拆成 A/B/C
+- 干净检出无 `.env` 时单测会因缺 `DATABASE_URL` 失败：`tests/__init__.py` 补占位 URL（回归 `test_unit_bootstrap`）
+- 不自动 merge、不打 tag、不迁业务库；GitHub Actions 已在 PR #2 跑通
+
+### 2026-09-16 【Grok 4.6】 对账按版本补拉
+
+- 根因：`applyReconcile` 只比 ID，且 `reconcileNow` 在无 missing 时把 `storeSeq` 推到 `high_water`
+- 对账返回 `versions`；内容/关闭变化会 refetch；删除当 extra 丢掉；补拉失败不推进游标
+- 完成：2026-09-16（Grok 4.6）
+
+### 2026-09-16 【Grok 4.6】 可靠性：验收、鉴权、同步
+
+- 修复 `verify.sh` 子 shell 失败误报 ALL PASS；`scripts/test_verify_gate.sh` 注入单测/lint/前端/构建/e2e/健康均非零
+- WS 用 `POST /api/ws-ticket` 短期票据；取消/错令牌/过期停止无限弹窗与无效重试；访问测试进 CI
+- 增量按 `change_seq` 分页，截断不推进水位；`/api/events/reconcile` 对账；窗口淘汰；延迟提交靠对账补齐
+- ingest 每次独立结果；全部入库失败非绿；`severity` 当前值与 `severity_peak` 分离；迁移 `setup/10-reliability.sql`
+- 集成测试默认临时库；不自动迁移业务库
+
+### 2026-09-09 【Claude Fable 5.1】 Phase 4 工程化与运维
+
+- CI：`.github/workflows/ci.yml` 四条作业（后端单测+PostGIS 集成；前端 check/test/build 并断言 dist 无 CDN；Playwright e2e；依赖审计只报告）
+- launchd：`service/com.crisis.api.plist`（API 8001，KeepAlive 仅异常退出时重启）+ `service/com.crisis.backup.plist`（每日 03:17）；`setup/install-launchd.sh` 安装/卸载，本机已安装并验证 8001 由 launchd 托管
+- 备份：`backup.sh`（pg_dump 自定义格式、`pg_restore --list` 校验、保留 KEEP 份、`--restore`）；本机已生成 `backups/crisis-*.dump`
+- 隧道令牌：`ACCESS_TOKEN` 非空时 `/api` `/ws` 需 `X-Access-Token`/`?token=`；本机判定按对端回环 + 无 `CF-Connecting-IP`/公网 `X-Forwarded-For`（Vite 代理开 `xfwd`）；前端 401 时提示输入令牌；`公网预览.sh` 改映射 8001 且无令牌拒绝开放（`ALLOW_OPEN_TUNNEL=1` 可强制）
+- 文档：`scripts/verify.sh` 一键验收；`CHANGELOG.md`；`docs/adr/0001–0003`；`项目进度记录.md`/`交付报告`/`终审报告` 归档到 `docs/archive/`；README/AGENTS/DEPLOY 补运维与安全口径
+- 验证：`tests.integration_access` 9/9；`scripts/verify.sh --quick` 通过
+- 未做：GitHub Actions 未实际在远端跑过（未 push）；`stop.sh` 未接管 launchd（停 8001 后由 `launchctl kickstart` 或重新登录恢复）
+
+### 2026-09-09 【Claude Fable 5.1】 Phase 3 前端模块化与自包含
+
+- `main.js` 4834 行 → 组合根 ≈650 行 + 17 个模块：`state.js`（单一 store）、`constants.js`、`storage.js`（localStorage 单键 `crisis.v3`，自动迁移旧键）、`i18n/`、`api/client.js`、`pipeline.js`、`grade.js`/`brief.js`/`headline.js`、`breaking.js`、`panels/`、`popup/`、`tour/`、`map/{instance,projection,cosmos,labels,effects}.js`、`util/{format,geo,timing}.js`
+- 自包含：`maplibre-gl@5.6.1` 入 npm 依赖并打包；Google Fonts 改系统字体栈；`index.html` 无任何 CDN；e2e 拦截外部域名仍可加载
+- 交互：事件流改事件委托（去内联 `onclick` 与 `window.*` 全局）；条目可 Tab 聚焦 + Enter 打开；所有 seg 组同步 `aria-selected`；健康点补读屏文字
+- 窄屏（≤760px）：底部标签栏（筛选 / 事件流 / 数据源 / 地图）+ 单面板抽屉；停靠拖动在窄屏关闭；统计条落在折行顶栏下方
+- 工具链：`vp check` 开 `no-undef=error`（模块拆分漏导入会在提交前拦住）；Vitest 22 例（格式/几何/搜索/地名/分级/i18n 键一致）；Playwright 4 例（fixtures 模式：无 CDN 加载、时间窗/搜索/弹窗/地球仪/语言、图层开关与键盘、390px 抽屉与弹窗）
+- 验证：`vp check` 0 错误；`vp test` 22/22；`playwright test` 4/4；`vp build` 通过；实时 smoke 6 路径通过、0 pageerror
+- 已知：模块间仍有 12 对函数级循环引用（ESM 函数提升下可运行，无顶层求值依赖）；`region-gazetteer.js`（747 行，地名表）与 `dock-panels.js`（734 行）未再拆；控制台偶见 MapLibre worker 的 `Unimplemented type: 4`（来自外部字形服务响应，Phase 5 自托管字形时消除）
+
+### 2026-09-09 【Claude Fable 5.1】 Phase 2 API v2 与增量推送
+
+- `/api/events` v2：`since`（含 deleted/closed）、`bbox`、`types`、`fields=summary|full`、ETag/304、gzip（全年 summary 线上 179 KB，原 2.36 MB）；`grade{band,tone,zh,en}` 服务端统一分级（`core/grade.py`，前端 `realGrade` 优先用之）
+- 新端点：`/api/events/{id}`、`/api/alerts`、`/api/stats`（聚合信号与真实事件分列）、`/api/meta`
+- WS 改主题消息 `/ws`：`alert`（兼容旧顶层 event_id）、`events.changed`（采集一轮后广播，前端 1.2 s 去抖后 `since` 增量拉取）、`pipeline.status`
+- 生命周期 `core/lifecycle.py`：EONET/GDACS/CMA 连续 3 轮缺席且源健康 → `closed`（前端灰显、不触发突发）；保留任务：raw 90 天清空、alert 180 天、deleted 30 天、样本 400 天
+- 国家归属：CMA/CENC 直写 CHN；其余落海时取 20 km 内最近国家
+- 前端：featureStore + since 增量合并、时间窗切换才全量；5 s 重渲染仅在有闪烁态时执行；refresh 并发合并
+- 验证：单测 35/35；`integration_api` 25/25；`integration_alerts` 5/5；`integration_lifecycle` 3/3；Playwright：首轮全量→后续 `since=`、切周全量、弹窗等级来自服务端并随语言切换、WS 收到 `events.changed`
+- 未做：告警回看面板 UI（Phase 3 面板模块化时一起做）
+
+### 2026-09-09 【Claude Fable 5.1】 Phase 0 止血 + Phase 1 数据语义与告警
+
+- **Phase 0**（`b9a40c9`）：`app/net.py` 代理策略（`HTTP_PROXY_MODE=env|direct|url`）；`core/sources.py` 源注册表；`/api/health` 增 `pipeline_status`/`enabled`/`warnings`，前端顶栏多源异常红显；EMSC 写健康表；全部任务错峰首采；dist 缺失挂占位页；`start.sh` 按 mtime 重建 dist；`vp check` 通过（数据文件排除、typeCheck 关）；删除 `app/app/static/index.html`、`web/src/style.css`、重复 schema；一次性/Windows 脚本归入 `setup/oneoff/`、`setup/windows/`；AGENTS/README/DEPLOY/PR 模板口径统一
+- **Phase 1**：GDELT 改「国家×日」聚合 `armed_clash`（`is_aggregate`），库内 1658 槽行合并为 279 行；战区热点迁入 `theater` 表 + `/api/theaters`，前端独立图层「战区基线」可开关、不计统计；`watch_point` 41 / `watch_region` 6 种子；Open-Meteo 逐日样本 `watch_sample`，基线 = 90 天中位数（≥14 样本，<20 m³/s 视为不在河道跳过）；FIRMS 改按关注区域 bbox + 1 km 网格聚类 + FRP 分档；告警改 `first_seen_at` 判新、`muted_until` 生效、聚合冲突按当日计数阈值
+- 迁移：`setup/migrate.sh` + `07/08/09-*.sql`（幂等，记 `schema_migration`）；数据修正 `setup/oneoff/migrate_phase1_data.py`（已 apply，备份 `backups/pre-phase1-*.dump`）；`snap_watch_points.py` 吸附离河道点
+- 验证：单测 30/30；`tests.integration_alerts` 5/5（首见 1 次、重 upsert 不重复、静默内小跃升不响、静默后跃升响、旧事件重启不响）；Playwright：战区层 12 点开关、战区弹窗、聚合信号弹窗；重启后告警 5 条（改前同场景 131 条）
+- 已知：GDELT 聚合坐标改用本槽报道点均值，不再吸附国家质心
+
+### 2026-09-09 【Claude Fable 5.1】 项目评审与整体改造方案
+
+- 新增 `docs/项目评审与改造方案-fable-5.1.html`（自包含、菜单分页、护眼主题、刷新保留位置）
+- 评审方法：全量源码阅读 + 单测 18/18 + `./start.sh --no-open` 拉起 8001/5180 + API 负载实测 + psql 抽查 + Playwright 6 条关键路径
+- 结论：P0 4 项（GDELT 15 分钟槽灌水 1540 行 war、watch_point/watch_region 为空、代理失效致全源静默中断、dist 落后源码）；五阶段改造路线见文档第 05 章
+- 未改任何源码；服务当前处于运行状态
 
 ### 2026-09-09 【Grok 4.6】 GitHub main + Cloudflare 公网预览
 
@@ -135,12 +239,11 @@
 
 ### 2026-08-14 【Grok 4.6】 预览端口改为 5180 / 8001
 
-- 5173 与 8000 被「CAD dwg识别」占用；本项目 Vite=5180、API=8001
+- 5173 与 8000 被本机其他项目占用；本项目 Vite=5180、API=8001
 
 ### 2026-08-14 【Grok 4.6】 项目迁入独立目录并转移会话
 
-- 新根目录：`/Users/oscar/AI/newproject/grok/全球综合危机监测中心`
-- Grok 会话已复制到新 cwd 分组；恢复见 `.grok/RESUME.md`
+- 仓库迁到独立项目目录（路径略）；会话按新工作区恢复，见本地 `.grok/RESUME.md`（不入库）
 
 ### 2026-08-14 【Grok 4.6】 平面⇄地球仪过渡再顺滑
 

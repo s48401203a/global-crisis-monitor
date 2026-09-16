@@ -32,6 +32,7 @@ def _strip_html(s: str) -> str:
 
 class GdacsCollector(BaseCollector):
     name = "gdacs"
+    timeout = 60.0   # GDACS 响应常超过 25s（2026-09 实测 40s 内未返回）
 
     def fetch(self) -> Any:
         return self.http_get(URL).json()

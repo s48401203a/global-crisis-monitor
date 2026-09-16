@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field
 Category = Literal["natural", "conflict"]
 EventType = Literal[
     "earthquake", "cyclone", "flood", "rainstorm", "wildfire", "volcano", "drought",
-    "armed_clash", "crisis_signal", "war",
+    "armed_clash", "crisis_signal",
+    "war",   # 遗留：历史数据可能残留；新入库不再产生
 ]
 
 

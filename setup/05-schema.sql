@@ -116,3 +116,28 @@ CREATE TABLE country (
     centroid        GEOGRAPHY(POINT,4326) NOT NULL
 );
 CREATE INDEX idx_country_geom ON country USING GIST (geom);
+
+-- ========== 2026-09 Phase 1 增量（新装库直接建；老库由 setup/migrate.sh 应用 07/08/09）==========
+ALTER TABLE event ADD COLUMN IF NOT EXISTS is_aggregate BOOLEAN NOT NULL DEFAULT false;  -- 聚合信号（GDELT 国家×日）
+ALTER TABLE event ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;                          -- 生命周期结束
+CREATE INDEX IF NOT EXISTS idx_event_updated ON event (updated_at DESC);
+
+-- 2026-09 可靠性：变更序号 + 当前/峰值严重度（老库由 setup/10-reliability.sql 补）
+CREATE SEQUENCE IF NOT EXISTS event_change_seq;
+ALTER TABLE event ADD COLUMN IF NOT EXISTS change_seq BIGINT;
+UPDATE event SET change_seq = nextval('event_change_seq') WHERE change_seq IS NULL;
+ALTER TABLE event ALTER COLUMN change_seq SET DEFAULT nextval('event_change_seq');
+ALTER TABLE event ALTER COLUMN change_seq SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_event_change_seq ON event (change_seq);
+ALTER TABLE event ADD COLUMN IF NOT EXISTS severity_peak REAL;
+UPDATE event SET severity_peak = GREATEST(COALESCE(severity_peak, 0), COALESCE(severity, 0))
+ WHERE severity_peak IS NULL;
+ALTER TABLE event ALTER COLUMN severity_peak SET DEFAULT 0;
+ALTER TABLE event ALTER COLUMN severity_peak SET NOT NULL;
+ALTER TABLE source_health ADD COLUMN IF NOT EXISTS last_ingest_status TEXT;
+ALTER TABLE source_health ADD COLUMN IF NOT EXISTS last_ingest_ok INT NOT NULL DEFAULT 0;
+ALTER TABLE source_health ADD COLUMN IF NOT EXISTS last_ingest_fail INT NOT NULL DEFAULT 0;
+
+-- 战区基线层（编辑维护，独立于 event）：见 setup/08-theater.sql
+-- 洪水逐日样本（基线 = 90 天中位数）：见 setup/09-watch-sample.sql
+-- 关注点 / 关注区域种子：见 setup/07-seed-watch.sql

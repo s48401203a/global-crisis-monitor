@@ -1,8 +1,8 @@
-# D:\crisis\app\app\main.py
 from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # truststore 必须在任何网络调用之前注入(企业网络 SSL 拦截)
@@ -12,39 +12,41 @@ truststore.inject_into_ssl()
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from fastapi import FastAPI
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .config import settings
+from .config import settings, REPO_ROOT
+from .net import effective_proxy_for_log
 from .logging_setup import setup_logging
 from .log_retention import run_log_retention
-from .api import routes_events, routes_health, ws
+from .api import routes_alerts, routes_events, routes_health, routes_meta, routes_stats, routes_theaters, ws
+from .api.access import AccessTokenMiddleware, ticket_router
 from .collectors.usgs import UsgsCollector
 from .collectors.gdacs import GdacsCollector
 from .collectors.eonet import EonetCollector
 from .collectors.gdelt import GdeltCollector
-from .collectors.war_hotspots import WarHotspotsCollector
+from .collectors.theaters import refresh_theaters
 from .collectors.openmeteo_flood import OpenMeteoFloodCollector
 from .collectors.firms import FirmsCollector
 from .collectors.cma_alert import CmaAlertCollector
 from .collectors.cenc import CencCollector
 from .collectors.emsc_ws import start_emsc_listener
 from .core.alerts import evaluate_alerts
+from .core.lifecycle import close_stale_events, run_retention
 
 setup_logging()
 log = logging.getLogger(__name__)
 
-# app/app/main.py → 仓库根 D:\crisis
-REPO_ROOT = Path(__file__).resolve().parents[2]
 WEB_DIST = REPO_ROOT / "web" / "dist"
-LEGACY_STATIC = Path(__file__).resolve().parent / "static"
+PLACEHOLDER_DIR = Path(__file__).resolve().parent / "placeholder"
 
 
 def _frontend_dir() -> Path:
-    """优先挂载 Vite 构建产物，缺失时回退旧 static（避免服务起不来）。"""
+    """挂载 Vite 构建产物；缺失时挂一个"请先构建"占位页而不是让 API 起不来。"""
     if (WEB_DIST / "index.html").is_file():
         return WEB_DIST
-    log.warning("未找到 %s，回退 %s", WEB_DIST, LEGACY_STATIC)
-    return LEGACY_STATIC
+    log.warning("未找到 %s，挂载占位页（请先 cd web && vp build）", WEB_DIST)
+    return PLACEHOLDER_DIR
 
 
 scheduler = BackgroundScheduler(
@@ -59,66 +61,55 @@ scheduler = BackgroundScheduler(
 )
 
 
-def _register_jobs() -> None:
-    if settings.enable_usgs:
-        scheduler.add_job(UsgsCollector().run, "interval",
-                          seconds=settings.interval_usgs,
-                          id="usgs", replace_existing=True)
-    if settings.enable_gdacs:
-        scheduler.add_job(GdacsCollector().run, "interval",
-                          seconds=settings.interval_gdacs,
-                          id="gdacs", replace_existing=True)
-    if settings.enable_eonet:
-        scheduler.add_job(EonetCollector().run, "interval",
-                          seconds=settings.interval_eonet,
-                          id="eonet", replace_existing=True)
-    if settings.enable_gdelt:
-        scheduler.add_job(GdeltCollector().run, "interval",
-                          seconds=settings.interval_gdelt,
-                          id="gdelt", replace_existing=True)
-    scheduler.add_job(WarHotspotsCollector().run, "interval",
-                      seconds=3600,
-                      id="war_hotspots", replace_existing=True)
-    if settings.enable_openmeteo:
-        scheduler.add_job(OpenMeteoFloodCollector().run, "interval",
-                          seconds=settings.interval_openmeteo,
-                          id="openmeteo", replace_existing=True)
-    if getattr(settings, "enable_cma", True):
-        scheduler.add_job(
-            _cma_tick,
-            "interval",
-            seconds=int(getattr(settings, "interval_cma", 300) or 300),
-            id="cma",
-            replace_existing=True,
-        )
-    if getattr(settings, "enable_cenc", True):
-        scheduler.add_job(
-            _cenc_tick,
-            "interval",
-            seconds=int(getattr(settings, "interval_cenc", 180) or 180),
-            id="cenc",
-            replace_existing=True,
-        )
-    if settings.enable_firms:
-        interval_firms = getattr(settings, "interval_firms", 900) or 900
-        scheduler.add_job(
-            FirmsCollector().run,
-            "interval",
-            seconds=int(interval_firms),
-            id="firms",
-            replace_existing=True,
-        )
-        log.info("已注册 FIRMS 采集任务（interval=%ss）", interval_firms)
+def _soon(offset_s: int) -> datetime:
+    """启动后错峰首采：避免所有源同一秒打出去，也避免间隔任务等一整轮才首跑。"""
+    return datetime.now(timezone.utc) + timedelta(seconds=offset_s)
 
+
+def _register_jobs() -> None:
+    # (id, enabled, func, interval_s, first_run_offset_s)
+    specs = [
+        ("usgs", settings.enable_usgs, UsgsCollector().run, settings.interval_usgs, 5),
+        ("gdacs", settings.enable_gdacs, GdacsCollector().run, settings.interval_gdacs, 20),
+        ("eonet", settings.enable_eonet, EonetCollector().run, settings.interval_eonet, 30),
+        ("gdelt", settings.enable_gdelt, GdeltCollector().run, settings.interval_gdelt, 45),
+        ("war_hotspots", True, refresh_theaters, 3600, 2),
+        ("openmeteo", settings.enable_openmeteo, OpenMeteoFloodCollector().run,
+         settings.interval_openmeteo, 60),
+        ("cma", getattr(settings, "enable_cma", True), _cma_tick,
+         int(getattr(settings, "interval_cma", 300) or 300), 10),
+        ("cenc", getattr(settings, "enable_cenc", True), _cenc_tick,
+         int(getattr(settings, "interval_cenc", 180) or 180), 15),
+        ("firms", settings.enable_firms, FirmsCollector().run,
+         int(getattr(settings, "interval_firms", 900) or 900), 90),
+    ]
+    for job_id, enabled, func, interval, offset in specs:
+        if not enabled:
+            # 已关闭的源：确保 jobstore 里没有残留任务（上次运行时可能是开的）
+            try:
+                scheduler.remove_job(job_id)
+            except Exception:
+                pass
+            continue
+        scheduler.add_job(func, "interval", seconds=int(interval), id=job_id,
+                          replace_existing=True, next_run_time=_soon(offset))
+
+    # 告警评估：启动后给采集器一个宽限期，避免回补的旧事件立刻刷屏
     scheduler.add_job(_alert_tick, "interval", seconds=60,
-                      id="alerts", replace_existing=True)
+                      id="alerts", replace_existing=True,
+                      next_run_time=_soon(settings.alert_startup_grace_seconds))
     scheduler.add_job(
         run_log_retention,
         "interval",
         minutes=10,
         id="log_retention",
         replace_existing=True,
+        next_run_time=_soon(120),
     )
+    scheduler.add_job(close_stale_events, "interval", minutes=5, id="lifecycle",
+                      replace_existing=True, next_run_time=_soon(300))
+    scheduler.add_job(run_retention, "interval", hours=24, id="retention",
+                      replace_existing=True, next_run_time=_soon(600))
 
     # USGS 停机回补改为一次性 job，避免堵住 lifespan 启动
     # SQLAlchemyJobStore 不能序列化 lambda，必须用模块级可引用函数
@@ -126,6 +117,7 @@ def _register_jobs() -> None:
         scheduler.add_job(
             _usgs_backfill_once,
             "date",
+            run_date=_soon(3),
             id="usgs_backfill_once",
             replace_existing=True,
         )
@@ -144,6 +136,7 @@ def _cenc_tick() -> None:
 
 
 def _start_runtime() -> None:
+    log.info("出站代理策略: %s", effective_proxy_for_log())
     _register_jobs()
     try:
         scheduler.start()
@@ -154,27 +147,7 @@ def _start_runtime() -> None:
     if settings.enable_emsc:
         start_emsc_listener()
 
-    try:
-        WarHotspotsCollector().run()
-    except Exception as e:
-        log.warning("战争热点首采失败: %r", e)
-    if settings.enable_gdelt:
-        try:
-            GdeltCollector().run()
-        except Exception as e:
-            log.warning("GDELT 首采失败: %r", e)
-    if getattr(settings, "enable_cma", True):
-        try:
-            _cma_tick()
-        except Exception as e:
-            log.warning("中央气象台预警首采失败: %r", e)
-    if getattr(settings, "enable_cenc", True):
-        try:
-            _cenc_tick()
-        except Exception as e:
-            log.warning("中国地震台网首采失败: %r", e)
-
-    log.info("系统启动完成,已注册 %d 个定时任务", len(scheduler.get_jobs()))
+    log.info("系统启动完成,已注册 %d 个定时任务（首采已错峰排入）", len(scheduler.get_jobs()))
 
 
 def _stop_runtime() -> None:
@@ -197,11 +170,21 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title="全球综合危机监测中心",
     description="中文默认 · 公开数据聚合 · 本地演示系统",
-    version="1.0",
+    version="2.0",
     lifespan=lifespan,
 )
+# 事件列表 JSON 高度重复，gzip 约 8–10×；1 KB 以下不压
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+if (settings.access_token or "").strip():
+    app.add_middleware(AccessTokenMiddleware)
+    log.info("ACCESS_TOKEN 已启用：非本机请求需 X-Access-Token")
+app.include_router(ticket_router)
 app.include_router(routes_events.router)
 app.include_router(routes_health.router)
+app.include_router(routes_theaters.router)
+app.include_router(routes_alerts.router)
+app.include_router(routes_stats.router)
+app.include_router(routes_meta.router)
 app.include_router(ws.router)
 
 _front = _frontend_dir()
