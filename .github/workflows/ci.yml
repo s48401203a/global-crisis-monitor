@@ -64,7 +64,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
-      - run: npx -y npm@12.0.2 ci --allow-remote=all
+      - run: npm install -g npm@12.0.2
+      - run: npm ci --allow-remote=all
       - run: ./node_modules/.bin/vp check
       - run: ./node_modules/.bin/vp test run
       - run: ./node_modules/.bin/vp build
@@ -81,7 +82,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
-      - run: npx -y npm@12.0.2 ci --allow-remote=all
+      - run: npm install -g npm@12.0.2
+      - run: npm ci --allow-remote=all
       - run: ./node_modules/.bin/playwright install --with-deps chromium
       - run: ./node_modules/.bin/playwright test
       - uses: actions/upload-artifact@v4

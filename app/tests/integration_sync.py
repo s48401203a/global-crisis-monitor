@@ -75,12 +75,16 @@ def _fetch_all(client, hours=8760, limit=1000, since_seq=None):
 def main() -> int:
     import app.main as m
     client = _client(m.app)
+    with get_session() as s:
+        s.execute(text("DELETE FROM alert"))
+        s.execute(text("DELETE FROM observation"))
+        s.execute(text("DELETE FROM event"))
 
     _bulk(5001, prefix="[IT-SYNC] p")
     feats, meta = _fetch_all(client, limit=1000)
     ids = [f["properties"]["id"] for f in feats]
     check("5001 snapshot via pages", len(ids) == 5001, f"count={len(ids)} pages={meta.get('pages')}")
-    check("snapshot ids unique", len(set(ids)) == 5001)
+    check("snapshot ids unique", len(set(ids)) == 5001, f"unique={len(set(ids))}")
     check("truncated pages then complete", meta.get("complete") is True and meta.get("truncated") is False)
     check("next_cursor empty when complete", meta.get("next_cursor") in (None, ""))
 
