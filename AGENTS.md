@@ -24,6 +24,7 @@
 ```bash
 ./start.sh --open        # PostgreSQL + uvicorn :8001 + Vite HMR :5180；dist 落后源码时自动重建
 ./stop.sh                # 停 API / Vite / 隧道；--stop-postgres 一并停库
+# 访达双击：启动.command / 停止.command（包装上面两条，结束后暂停窗口）
 curl -s http://127.0.0.1:8001/api/health | python3 -m json.tool   # 含 pipeline_status / proxy / warnings
 
 cd app && PYTHONUTF8=1 .venv/bin/python -m tests.run_unit          # 后端单测（无 pytest）
@@ -53,4 +54,4 @@ Windows 见 DEPLOY.md「Windows」小节（`启动.bat` / `停止.bat`，默认 
 
 ## 当前优先事项
 
-Phase 0–4 已于 2026-09-09 完成（见 CHANGELOG.md）。剩余为 Phase 5 可选增强：瓦片缓存代理/离线底图、Webhook/Telegram 告警通道、ACLED 等权威冲突源、水文源、历史回放。任何改动合并前跑 `bash scripts/verify.sh`。
+Phase 0–4 已完成；2026-09-16 可靠性修复见 CHANGELOG 与 `docs/adr/0004-sync-auth-verify.md`。剩余为 Phase 5 可选增强：瓦片缓存代理/离线底图、Webhook/Telegram 告警通道、ACLED 等权威冲突源、水文源、历史回放。合并前跑 `bash scripts/verify.sh`；不要把 stub/注入模式的绿色结果当成真实验收。

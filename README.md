@@ -57,6 +57,8 @@ bash setup/macos-deploy.sh
 ./stop.sh
 ```
 
+访达也可双击仓库根目录的 `启动.command` / `停止.command`。
+
 | 地址 | 用途 |
 |------|------|
 | http://127.0.0.1:5180 | 开发界面（Vite HMR，`/api` `/ws` 代理到 8001） |
@@ -93,12 +95,13 @@ API（v2，均为只读 GET；列表支持 gzip 与 ETag）：
 
 | 端点 | 说明 |
 |------|------|
-| `/api/events?hours&since&bbox&types&category&min_severity&fields=summary\|full&limit` | GeoJSON 事件；`since=` 返回增量（含 deleted/closed）；`grade` 字段为服务端统一分级 |
+| `/api/events?hours&since_seq&cursor&since&bbox&types&category&min_severity&fields=summary\|full&limit` | GeoJSON 事件；按 `change_seq` 稳定分页。截断时必须续读 `next_cursor`，不得把截断页水位当完整。增量用 `since_seq`（含 deleted/closed）；`GET /api/events/reconcile` 对账 |
 | `/api/events/{id}` | 详情 + observations + alerts |
 | `/api/alerts?since&rule&limit` | 告警历史 |
 | `/api/stats?hours&bbox` | 按类型/国家分桶，聚合信号与真实事件分列 |
 | `/api/theaters` | 战区基线层（编辑维护，不计入事件） |
 | `/api/health` · `/api/meta` | 源健康与 `pipeline_status`；类型/来源字典 |
+| `POST /api/ws-ticket` | 短期 WebSocket 票据；`/ws?ticket=`（避免长期令牌进访问日志） |
 | `ws://…/ws` | 主题消息：`alert` · `events.changed` · `pipeline.status` |
 
 | 路径 | 说明 |
@@ -106,7 +109,8 @@ API（v2，均为只读 GET；列表支持 gzip 与 ETag）：
 | `app/` | FastAPI、采集器、入库与严重度 |
 | `web/` | MapLibre 前端 |
 | `setup/` | 建库与 macOS / Windows 安装 |
-| `start.sh` / `stop.sh` | macOS 启停 |
+| `start.sh` / `stop.sh` | macOS 终端启停 |
+| `启动.command` / `停止.command` | macOS 访达双击启停 |
 | `启动.bat` / `停止.bat` | Windows 启停 |
 
 单测（无需 pytest）：
@@ -182,6 +186,8 @@ bash setup/macos-deploy.sh
 ./stop.sh
 ```
 
+Or double-click `启动.command` / `停止.command` in Finder.
+
 | URL | Role |
 |------|------|
 | http://127.0.0.1:5180 | Dev UI (Vite HMR; `/api` `/ws` proxied to 8001) |
@@ -218,12 +224,13 @@ API (v2, read-only GET; lists are gzip + ETag):
 
 | Endpoint | Role |
 |------|------|
-| `/api/events?hours&since&bbox&types&category&min_severity&fields=summary\|full&limit` | GeoJSON events; `since=` returns deltas incl. deleted/closed; `grade` is the server-side grading |
+| `/api/events?hours&since_seq&cursor&since&bbox&types&category&min_severity&fields=summary\|full&limit` | GeoJSON events; stable `change_seq` pages. Do not advance the watermark on a truncated page. Deltas use `since_seq` (includes deleted/closed). Reconcile with `GET /api/events/reconcile` |
 | `/api/events/{id}` | Detail + observations + alerts |
 | `/api/alerts?since&rule&limit` | Alert history |
 | `/api/stats?hours&bbox` | Buckets by type/country; aggregates split from real events |
 | `/api/theaters` | Editorial conflict theaters (not events) |
 | `/api/health` · `/api/meta` | Source health with `pipeline_status`; type/source dictionary |
+| `POST /api/ws-ticket` | Short-lived WebSocket ticket; connect with `/ws?ticket=` |
 | `ws://…/ws` | Topics: `alert` · `events.changed` · `pipeline.status` |
 
 | Path | Role |
@@ -231,7 +238,8 @@ API (v2, read-only GET; lists are gzip + ETag):
 | `app/` | FastAPI, collectors, ingest, severity |
 | `web/` | MapLibre UI |
 | `setup/` | Schema + macOS / Windows install |
-| `start.sh` / `stop.sh` | macOS start / stop |
+| `start.sh` / `stop.sh` | macOS terminal start / stop |
+| `启动.command` / `停止.command` | macOS Finder double-click start / stop |
 | `启动.bat` / `停止.bat` | Windows start / stop |
 
 Unit tests (no pytest):

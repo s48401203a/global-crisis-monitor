@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main, "refactor/**", "feat/**"]
+    branches: [main, "refactor/**", "feat/**", "fix/**"]
   pull_request:
 
 jobs:
@@ -42,12 +42,19 @@ jobs:
       - name: unit tests
         working-directory: app
         run: python -m tests.run_unit
-      - name: integration · alerts / lifecycle / api contract
+      - name: integration · access / alerts / lifecycle / api / ingest / sync
         working-directory: app
+        env:
+          CRISIS_IT_USE_ENV_DB: "1"
         run: |
+          python -m tests.integration_access
           python -m tests.integration_alerts
           python -m tests.integration_lifecycle
           python -m tests.integration_api
+          python -m tests.integration_ingest
+          python -m tests.integration_sync
+      - name: verify.sh failure injection
+        run: bash scripts/test_verify_gate.sh
 
   frontend:
     name: frontend · check + unit + build (no CDN)

@@ -98,4 +98,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from tests.isolated_db import isolated_database
+    with isolated_database():
+        sys.exit(main())

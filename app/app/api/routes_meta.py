@@ -32,5 +32,16 @@ def meta():
                      "enabled": s.enabled, "interval_seconds": s.interval, "note_zh": s.note_zh}
                     for s in all_sources()],
         "grade_tones": list(TONES),
-        "ws": {"path": "/ws", "topics": ["alert", "events.changed", "pipeline.status"]},
+        "ws": {
+            "path": "/ws",
+            "topics": ["alert", "events.changed", "pipeline.status"],
+            "auth": "POST /api/ws-ticket then ?ticket=; legacy ?token= also accepted",
+        },
+        "sync": {
+            "cursor": "change_seq",
+            "snapshot": "GET /api/events (paginated via cursor/next_cursor)",
+            "changes": "GET /api/events?since_seq=",
+            "reconcile": "GET /api/events/reconcile",
+            "truncated": "do not advance watermark until complete=true",
+        },
     }

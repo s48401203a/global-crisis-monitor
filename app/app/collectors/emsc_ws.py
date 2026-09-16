@@ -6,7 +6,7 @@ import websockets
 from ..core.schemas import NormalizedEvent
 from ..core.ingest import ingest_events
 from ..net import websocket_proxy
-from .base import touch_attempt, touch_failure, touch_success
+from .base import touch_attempt, touch_failure, touch_success, touch_partial
 
 log = logging.getLogger(__name__)
 SOURCE = "emsc"
@@ -38,13 +38,11 @@ def _to_event(msg: dict) -> NormalizedEvent | None:
         return None
 
 
-def _publish() -> None:
+def _publish(ids: list[int]) -> None:
     try:
         from ..api.ws import broadcast
-        from ..core.ingest import last_changed_ids
-        ids = last_changed_ids()
         if ids:
-            broadcast("events.changed", {"source": SOURCE, "count": len(ids), "ids": ids})
+            broadcast("events.changed", {"source": SOURCE, "count": len(ids), "ids": list(ids)})
     except Exception as e:
         log.debug("[emsc] 广播失败: %r", e)
 
@@ -77,10 +75,19 @@ async def _listen() -> None:
                     msg = json.loads(raw)
                     ev = _to_event(msg)
                     if ev:
-                        # action 为 update 时,ingest 内部按 upsert 处理修订
-                        ingest_events([ev])
-                        _publish()
-                    _safe(touch_success, SOURCE)
+                        result = ingest_events([ev])
+                        if result.outcome == "failed":
+                            err = result.failed[0]["error"] if result.failed else "ingest failed"
+                            _safe(touch_failure, SOURCE, err)
+                        elif result.outcome == "partial":
+                            _safe(touch_partial, SOURCE, result.success_count,
+                                  len(result.failed), result.failed[0]["error"] if result.failed else "")
+                            _publish(result.committed_ids)
+                        else:
+                            _safe(touch_success, SOURCE)
+                            _publish(result.committed_ids)
+                    else:
+                        _safe(touch_success, SOURCE)
         except Exception as e:
             _safe(touch_failure, SOURCE, repr(e))
             log.error("[emsc] 连接中断: %r,%d 秒后重连", e, backoff)

@@ -54,6 +54,10 @@ from tests.test_parse_dt_and_severity import (
     test_gdacs_naive_is_utc,
     test_war_baseline_does_not_alert,
 )
+from tests.test_access_ticket import (
+    test_ticket_roundtrip,
+    test_token_matches_rejects_wrong_length,
+)
 
 
 def main() -> int:
@@ -93,6 +97,8 @@ def main() -> int:
         test_cyclone_and_wildfire_units,
         test_cma_levels_and_flood_ratio,
         test_conflict_confidence_bands,
+        test_ticket_roundtrip,
+        test_token_matches_rejects_wrong_length,
     ]
     failed = 0
     for fn in tests:

@@ -20,7 +20,7 @@ from .net import effective_proxy_for_log
 from .logging_setup import setup_logging
 from .log_retention import run_log_retention
 from .api import routes_alerts, routes_events, routes_health, routes_meta, routes_stats, routes_theaters, ws
-from .api.access import AccessTokenMiddleware
+from .api.access import AccessTokenMiddleware, ticket_router
 from .collectors.usgs import UsgsCollector
 from .collectors.gdacs import GdacsCollector
 from .collectors.eonet import EonetCollector
@@ -178,6 +178,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1024)
 if (settings.access_token or "").strip():
     app.add_middleware(AccessTokenMiddleware)
     log.info("ACCESS_TOKEN 已启用：非本机请求需 X-Access-Token")
+app.include_router(ticket_router)
 app.include_router(routes_events.router)
 app.include_router(routes_health.router)
 app.include_router(routes_theaters.router)

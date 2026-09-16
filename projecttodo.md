@@ -14,6 +14,14 @@
 
 ---
 
+### 2026-09-16 【Grok 4.6】 可靠性：验收、鉴权、同步
+
+- 修复 `verify.sh` 子 shell 失败误报 ALL PASS；`scripts/test_verify_gate.sh` 注入单测/lint/前端/构建/e2e/健康均非零
+- WS 用 `POST /api/ws-ticket` 短期票据；取消/错令牌/过期停止无限弹窗与无效重试；访问测试进 CI
+- 增量按 `change_seq` 分页，截断不推进水位；`/api/events/reconcile` 对账；窗口淘汰；延迟提交靠对账补齐
+- ingest 每次独立结果；全部入库失败非绿；`severity` 当前值与 `severity_peak` 分离；迁移 `setup/10-reliability.sql`
+- 集成测试默认临时库；不自动迁移业务库
+
 ### 2026-09-09 【Claude Fable 5.1】 Phase 4 工程化与运维
 
 - CI：`.github/workflows/ci.yml` 四条作业（后端单测+PostGIS 集成；前端 check/test/build 并断言 dist 无 CDN；Playwright e2e；依赖审计只报告）

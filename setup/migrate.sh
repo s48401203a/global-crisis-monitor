@@ -22,7 +22,16 @@ for f in "$ROOT"/setup/0[6-9]-*.sql "$ROOT"/setup/[1-9][0-9]-*.sql; do
     continue
   fi
   echo "[migrate] apply $name"
-  psql -f "$f"
-  psql -c "INSERT INTO schema_migration(name) VALUES ('$name') ON CONFLICT DO NOTHING;"
+  # 迁移与记账同一事务：失败回滚，不会把半成品记为成功。
+  if ! "$PG_BIN/psql" -v ON_ERROR_STOP=1 -q <<SQL
+BEGIN;
+\\i $f
+INSERT INTO schema_migration(name) VALUES ('$name') ON CONFLICT DO NOTHING;
+COMMIT;
+SQL
+  then
+    echo "[migrate] FAILED $name（已回滚，未记 schema_migration）" >&2
+    exit 1
+  fi
 done
 echo "[migrate] done"

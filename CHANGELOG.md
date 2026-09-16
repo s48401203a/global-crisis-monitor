@@ -2,6 +2,14 @@
 
 按阶段记录；细粒度条目见 `projecttodo.md`。日期为落地日。
 
+## 2026-09-16 · 可靠性：验收、鉴权、同步
+
+- `scripts/verify.sh` 失败回传父进程；失败注入脚本覆盖单测/lint/前端/构建/e2e/健康
+- HTTP/WS 统一鉴权：短期 `/api/ws-ticket`，取消与错误凭据停止重试
+- 事件按 `change_seq` 分页；截断不推进水位；`/api/events/reconcile` 对账；窗口淘汰
+- ingest 返回独立结果；全部入库失败不显示健康；`severity` 与 `severity_peak` 分离
+- 集成测试使用临时库；访问/WS/同步测试进入 CI
+
 ## 2026-09-09 · Phase 4 工程化与运维
 - GitHub Actions：后端单测 + PostGIS 集成、前端 check/test/build（断言无 CDN）、Playwright e2e、依赖审计（只报告）
 - macOS `launchd`：`service/com.crisis.api.plist` + `setup/install-launchd.sh`；每日备份 `backup.sh` + `com.crisis.backup.plist`

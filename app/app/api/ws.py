@@ -1,6 +1,6 @@
 # WebSocket 实时通道：主题化消息 {topic, payload}
 #   alert          — 告警（兼容旧格式：payload 字段同时平铺在顶层，含 event_id）
-#   events.changed — 某源一轮入库后变更的事件 id 列表，前端据此增量拉取 since=
+#   events.changed — 某源一轮入库后变更的事件 id 列表，前端据此增量拉取
 #   pipeline.status— 采集管道状态变化
 from __future__ import annotations
 
@@ -21,9 +21,10 @@ _loop: asyncio.AbstractEventLoop | None = None
 
 async def _serve(websocket: WebSocket) -> None:
     global _loop
-    from .access import token_ok
-    if not token_ok(websocket):  # WebSocket 与 Request 同样有 headers/query_params
-        await websocket.close(code=4401)
+    from .access import ws_auth_code
+    code = ws_auth_code(websocket)
+    if code is not None:
+        await websocket.close(code=code)
         return
     await websocket.accept()
     _clients.add(websocket)

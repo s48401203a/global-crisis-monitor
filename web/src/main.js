@@ -5,6 +5,7 @@ import {
   connectWS,
   loadHealth,
   loadTheaters,
+  reconcileNow,
   refresh,
   setLivePill,
   syncTheaterLayer,
@@ -514,6 +515,7 @@ map.on("load", async () => {
   loadTheaters();
   setInterval(loadTheaters, 600000);
   setInterval(refresh, 20000);
+  setInterval(reconcileNow, 60000);
   setInterval(loadHealth, 30000);
   // 每 5 秒重算闪烁态：新灾害闪完后恢复静态类型色点
   setInterval(() => {

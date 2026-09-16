@@ -9,12 +9,14 @@ WEB="$ROOT/web"
 LOG_DIR="$ROOT/logs"
 SECRETS="$ROOT/secrets"
 if [[ -z "${PG_BIN:-}" ]]; then
-  if [[ -x /opt/homebrew/opt/postgresql@17/bin/psql ]]; then
+  if command -v psql >/dev/null 2>&1; then
+    PG_BIN="$(dirname "$(command -v psql)")"
+  elif [[ -x /opt/homebrew/opt/postgresql@17/bin/psql ]]; then
     PG_BIN=/opt/homebrew/opt/postgresql@17/bin
   elif [[ -x /usr/local/opt/postgresql@17/bin/psql ]]; then
     PG_BIN=/usr/local/opt/postgresql@17/bin
   else
-    PG_BIN=/opt/homebrew/opt/postgresql@17/bin
+    PG_BIN=""
   fi
 fi
 export PATH="$HOME/.local/bin:$PG_BIN:/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -28,13 +30,21 @@ if ! command -v brew >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ ! -x "$PG_BIN/psql" ]]; then
+if [[ -z "$PG_BIN" || ! -x "$PG_BIN/psql" ]]; then
   echo "[macos-deploy] 安装 postgresql@17 + postgis …"
   HOMEBREW_NO_AUTO_UPDATE=1 brew install postgresql@17 postgis
+  if [[ -x /opt/homebrew/opt/postgresql@17/bin/psql ]]; then
+    PG_BIN=/opt/homebrew/opt/postgresql@17/bin
+  elif [[ -x /usr/local/opt/postgresql@17/bin/psql ]]; then
+    PG_BIN=/usr/local/opt/postgresql@17/bin
+  elif command -v psql >/dev/null 2>&1; then
+    PG_BIN="$(dirname "$(command -v psql)")"
+  fi
+  export PATH="$HOME/.local/bin:$PG_BIN:/opt/homebrew/bin:/usr/local/bin:$PATH"
 fi
 
-if [[ ! -x "$PG_BIN/psql" ]]; then
-  echo "[macos-deploy] 安装后仍找不到 $PG_BIN/psql" >&2
+if [[ -z "$PG_BIN" || ! -x "$PG_BIN/psql" ]]; then
+  echo "[macos-deploy] 仍找不到 psql。请安装 PostgreSQL 17 或设置 PG_BIN。" >&2
   exit 1
 fi
 

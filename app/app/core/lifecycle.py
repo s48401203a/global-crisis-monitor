@@ -25,6 +25,7 @@ def close_stale_events() -> int:
     """返回本轮关闭的事件数。"""
     specs = by_name()
     closed = 0
+    closed_ids: list[int] = []
     with get_session() as s:
         for src, rounds in LIFECYCLE_SOURCES.items():
             spec = specs.get(src)
@@ -33,7 +34,8 @@ def close_stale_events() -> int:
             grace = spec.interval * rounds + 120
             rows = s.execute(text("""
                 UPDATE event e
-                   SET status = 'closed', closed_at = now(), updated_at = now()
+                   SET status = 'closed', closed_at = now(), updated_at = clock_timestamp(),
+                       change_seq = nextval('event_change_seq')
                  WHERE e.primary_source = :src
                    AND e.status IN ('active', 'revised', 'unconfirmed')
                    AND NOT EXISTS (
@@ -49,11 +51,12 @@ def close_stale_events() -> int:
             """), {"src": src, "grace": str(grace)}).fetchall()
             if rows:
                 closed += len(rows)
+                closed_ids.extend(int(r[0]) for r in rows)
                 log.info("[lifecycle] %s: %d 个事件已关闭", src, len(rows))
     if closed:
         try:
             from ..api.ws import broadcast
-            broadcast("events.changed", {"source": "lifecycle", "count": closed, "ids": []})
+            broadcast("events.changed", {"source": "lifecycle", "count": closed, "ids": closed_ids[:500]})
         except Exception:
             pass
     return closed

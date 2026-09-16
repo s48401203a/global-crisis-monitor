@@ -1,49 +1,45 @@
-/** 后端交互：事件增量拉取（featureStore）、健康、战区层、WebSocket。 */
+/** 后端交互：事件快照/增量/对账、健康、战区层、WebSocket。 */
 import { markBreakingBlink } from "../breaking.js";
 import { featureStore } from "../constants.js";
 import { sourceLabel } from "../grade.js";
-import { L, getLang } from "../i18n/index.js";
+import { L } from "../i18n/index.js";
 import { map } from "../map/instance.js";
 import { isTypeEnabled } from "../panels/index.js";
 import { applyFeatures, selectedHours } from "../pipeline.js";
 import { state } from "../state.js";
 import { escapeHtml, fmtAge } from "../util/format.js";
+import { auth } from "./auth.js";
+import {
+  PAGE_LIMIT,
+  applyReconcile,
+  collectPages,
+  mergeIncremental,
+  pruneStoreByWindow,
+  replaceSnapshot,
+  shouldAdvanceCursor,
+  watermarkFromMeta,
+} from "./sync.js";
 
-/* ========== 访问令牌（隧道模式）：401 时提示输入，存 sessionStorage，随请求带 X-Access-Token ========== */
-let tokenPrompted = false;
-
-function accessToken() {
-  try {
-    return sessionStorage.getItem("crisis_access_token") || "";
-  } catch {
-    return "";
-  }
+function storeToArray() {
+  return [...featureStore.values()];
 }
 
 async function apiFetch(url, init = {}) {
-  const headers = new Headers(init.headers || {});
-  const tok = accessToken();
-  if (tok) headers.set("X-Access-Token", tok);
+  const headers = auth.applyHeaders(new Headers(init.headers || {}));
   const r = await fetch(url, { ...init, headers });
-  if (r.status === 401 && !tokenPrompted) {
-    tokenPrompted = true;
-    const entered = window.prompt(
-      getLang() === "en"
-        ? "This instance requires an access token (ACCESS_TOKEN):"
-        : "此实例需要访问令牌（ACCESS_TOKEN）：",
-      "",
-    );
-    if (entered) {
-      try {
-        sessionStorage.setItem("crisis_access_token", entered.trim());
-      } catch {
-        /* ignore */
-      }
-      tokenPrompted = false;
-      return apiFetch(url, init);
-    }
+  if (r.status !== 401) {
+    if (r.ok) auth.noteSuccess();
+    return r;
   }
-  return r;
+  if (!auth.allowReconnect()) return r;
+  const result = await auth.promptForToken("missing");
+  if (!result.ok) return r;
+  const retryHeaders = auth.applyHeaders(new Headers(init.headers || {}));
+  const r2 = await fetch(url, { ...init, headers: retryHeaders });
+  if (r2.status === 401) {
+    await auth.noteInvalidCredentials();
+  }
+  return r2;
 }
 
 async function loadTheaters() {
@@ -71,27 +67,20 @@ function syncTheaterLayer() {
   });
 }
 
-function storeToArray() {
-  return [...featureStore.values()];
+function publishStore() {
+  pruneStoreByWindow(featureStore, Number(selectedHours()), Date.now());
+  state.lastFeatures = storeToArray();
+  applyFeatures(state.lastFeatures);
 }
 
-function mergeIncremental(features) {
-  let changed = 0;
-  for (const f of features) {
-    const p = f.properties || {};
-    if (p.id == null) continue;
-    if (p.status === "deleted") {
-      if (featureStore.delete(p.id)) changed++;
-      continue;
-    }
-    featureStore.set(p.id, f);
-    changed++;
-  }
-  return changed;
+async function fetchJson(url) {
+  const er = await apiFetch(url, { cache: "no-store" });
+  if (er.status === 401) throw new Error("events 401");
+  if (!er.ok) throw new Error("events " + er.status);
+  return er.json();
 }
 
 async function refresh({ full = false } = {}) {
-  // 全量拉取进行中时合并并发调用（启动阶段多处触发），避免重复 2 次全量
   if (state.refreshInFlight) return state.refreshInFlight;
   state.refreshInFlight = refreshBody({ full });
   try {
@@ -104,7 +93,6 @@ async function refresh({ full = false } = {}) {
 async function refreshBody({ full = false } = {}) {
   const hours = selectedHours();
   try {
-    // 开发模式：?fixtures=test 时加载本地测试夹具（手测台风轨迹/洪水箭头等 DB 无数据的路径）
     if (import.meta.env?.DEV && new URLSearchParams(location.search).get("fixtures") === "test") {
       const fr = await fetch(`/test-fixtures.json`, { cache: "no-store" });
       if (!fr.ok) throw new Error("fixtures " + fr.status);
@@ -115,33 +103,64 @@ async function refreshBody({ full = false } = {}) {
       setLivePill(true);
       return;
     }
-    const needFull = full || state.storeHours !== hours || !state.storeSince;
-    const url = needFull
-      ? `/api/events?hours=${hours}&limit=5000&fields=summary`
-      : `/api/events?hours=${hours}&limit=5000&fields=summary&since=${encodeURIComponent(state.storeSince)}`;
-    const er = await apiFetch(url, { cache: "no-store" });
-    if (!er.ok) throw new Error("events " + er.status);
-    const fc = await er.json();
-    if (!fc || !Array.isArray(fc.features)) throw new Error("invalid events payload");
+    const needFull = full || state.storeHours !== hours || state.storeSeq == null;
+    const collected = await collectPages(fetchJson, {
+      hours,
+      sinceSeq: needFull ? null : state.storeSeq,
+      full: needFull,
+      limit: PAGE_LIMIT,
+    });
     if (needFull) {
-      featureStore.clear();
-      for (const f of fc.features)
-        if (f.properties?.id != null) featureStore.set(f.properties.id, f);
+      replaceSnapshot(featureStore, collected.features);
       state.storeHours = hours;
     } else {
-      mergeIncremental(fc.features);
+      mergeIncremental(featureStore, collected.features);
     }
-    if (fc.meta?.server_time) state.storeSince = fc.meta.server_time;
-    state.lastFeatures = storeToArray();
-    applyFeatures(state.lastFeatures);
+    if (shouldAdvanceCursor(collected.meta)) {
+      const wm = watermarkFromMeta(collected.meta);
+      if (wm != null && Number.isFinite(wm)) state.storeSeq = wm;
+      if (collected.meta?.server_time) state.storeSince = collected.meta.server_time;
+    }
+    publishStore();
     setLivePill(true);
+    if (collected.aborted || collected.meta?.truncated) {
+      // 未读完：保持旧水位，下一轮继续；同时拉对账以免静默丢页
+      scheduleReconcile(0);
+    }
   } catch (e) {
     console.warn("refresh failed", e);
     setLivePill(false);
   }
 }
 
-/** WS 通知后的增量刷新：合并 1.2 秒内的多次通知 */
+async function reconcileNow() {
+  try {
+    const hours = selectedHours();
+    const r = await apiFetch(`/api/events/reconcile?hours=${encodeURIComponent(hours)}`, {
+      cache: "no-store",
+    });
+    if (!r.ok) throw new Error("reconcile " + r.status);
+    const payload = await r.json();
+    const diff = applyReconcile(featureStore, payload, Number(hours), Date.now());
+    if (diff.missing.length) {
+      await refresh({ full: true });
+      return;
+    }
+    if (payload.high_water != null) state.storeSeq = Number(payload.high_water);
+    publishStore();
+  } catch (e) {
+    console.warn("reconcile failed", e);
+  }
+}
+
+function scheduleReconcile(delay = 60000) {
+  clearTimeout(state.reconcileTimer);
+  state.reconcileTimer = setTimeout(() => {
+    reconcileNow();
+    scheduleReconcile(60000);
+  }, delay);
+}
+
 function scheduleIncrementalRefresh() {
   clearTimeout(state.incrementalTimer);
   state.incrementalTimer = setTimeout(() => refresh(), 1200);
@@ -150,7 +169,6 @@ function scheduleIncrementalRefresh() {
 function setLivePill(ok) {
   const el = document.getElementById("livePill");
   if (!el) return;
-  // 连接正常但采集管道 degraded/down 时，同样红显并说明原因
   const pipe = state.pipelineState.status;
   let label = ok ? L().live : L().connErr;
   let bad = !ok;
@@ -180,9 +198,18 @@ function renderHealth(h) {
   if (prevPipe !== state.pipelineState.status) setLivePill(true);
   const st = L().status;
   const rowHtml = (s, i) => {
-    const dot = s.status === "ok" ? "ok" : s.status === "error" ? "err" : "off";
+    const dot =
+      s.status === "ok"
+        ? "ok"
+        : s.status === "error"
+          ? "err"
+          : s.status === "partial"
+            ? "err"
+            : "off";
     const tail =
-      s.status === "ok" || s.status === "error" ? fmtAge(s.age_seconds) : st[s.status] || s.status;
+      s.status === "ok" || s.status === "error" || s.status === "partial"
+        ? fmtAge(s.age_seconds)
+        : st[s.status] || s.status;
     const tip = [s.status_zh || st[s.status] || "", s.note_zh || "", s.last_error || ""]
       .filter(Boolean)
       .join(" · ");
@@ -223,52 +250,98 @@ async function loadHealth() {
   }
 }
 
-function connectWS() {
+async function wsTicketQuery() {
+  const tok = auth.getToken();
+  if (!tok && !auth.allowReconnect()) return "";
   try {
-    const ws = new WebSocket(
-      `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`,
-    );
-    ws.onmessage = (e) => {
-      let d = null;
-      try {
-        d = JSON.parse(e.data);
-      } catch {
-        d = null;
-      }
-      if (!d) return;
-      const topic = d.topic || (d.event_id != null ? "alert" : "");
-      if (topic === "alert") {
-        const id = d.event_id ?? d.payload?.event_id;
-        if (id != null) markBreakingBlink(id);
-        scheduleIncrementalRefresh();
-        loadHealth();
-      } else if (topic === "events.changed") {
-        scheduleIncrementalRefresh();
-      } else if (topic === "pipeline.status") {
-        loadHealth();
-      }
-    };
-    ws.onopen = () => {
-      try {
-        ws.send("ping");
-      } catch (_) {}
-    };
-    const ping = setInterval(() => {
-      if (ws.readyState !== 1) {
-        clearInterval(ping);
-        return;
-      }
-      try {
-        ws.send("ping");
-      } catch (_) {}
-    }, 25000);
-    ws.onclose = () => {
-      clearInterval(ping);
-      setTimeout(connectWS, 5000);
-    };
+    const r = await apiFetch("/api/ws-ticket", { method: "POST", cache: "no-store" });
+    if (r.status === 401) return "";
+    if (!r.ok) return "";
+    const j = await r.json();
+    if (j && j.ticket) return `ticket=${encodeURIComponent(j.ticket)}`;
   } catch {
-    setTimeout(connectWS, 5000);
+    /* 无令牌本机直连时 ticket 接口也可能 200 required=false */
   }
+  return "";
+}
+
+function connectWS() {
+  if (!auth.allowReconnect()) return;
+  clearTimeout(state.wsReconnectTimer);
+  const go = async () => {
+    if (!auth.allowReconnect()) return;
+    try {
+      const q = await wsTicketQuery();
+      const ws = new WebSocket(
+        `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${q ? `?${q}` : ""}`,
+      );
+      ws.onmessage = (e) => {
+        let d = null;
+        try {
+          d = JSON.parse(e.data);
+        } catch {
+          d = null;
+        }
+        if (!d) return;
+        const topic = d.topic || (d.event_id != null ? "alert" : "");
+        if (topic === "alert") {
+          const id = d.event_id ?? d.payload?.event_id;
+          if (id != null) markBreakingBlink(id);
+          scheduleIncrementalRefresh();
+          loadHealth();
+        } else if (topic === "events.changed") {
+          scheduleIncrementalRefresh();
+        } else if (topic === "pipeline.status") {
+          loadHealth();
+        }
+      };
+      ws.onopen = () => {
+        state.wsBackoffMs = 1000;
+        try {
+          ws.send("ping");
+        } catch {
+          /* ignore */
+        }
+        scheduleReconcile(1500);
+      };
+      const ping = setInterval(() => {
+        if (ws.readyState !== 1) {
+          clearInterval(ping);
+          return;
+        }
+        try {
+          ws.send("ping");
+        } catch {
+          /* ignore */
+        }
+      }, 25000);
+      ws.onclose = (ev) => {
+        clearInterval(ping);
+        const code = ev && ev.code;
+        if (code === 4401) {
+          auth.noteInvalidCredentials().then((res) => {
+            if (res && res.ok) scheduleWsReconnect(300);
+          });
+          return;
+        }
+        if (code === 4403) {
+          scheduleWsReconnect(300);
+          return;
+        }
+        scheduleWsReconnect(state.wsBackoffMs);
+        state.wsBackoffMs = Math.min((state.wsBackoffMs || 1000) * 2, 15000);
+      };
+    } catch {
+      scheduleWsReconnect(state.wsBackoffMs || 5000);
+    }
+  };
+  go();
+}
+
+function scheduleWsReconnect(delay) {
+  if (!auth.allowReconnect()) return;
+  clearTimeout(state.wsReconnectTimer);
+  state.wsReconnectTimer = setTimeout(connectWS, delay);
 }
 
 export {
@@ -277,6 +350,7 @@ export {
   refresh,
   refreshBody,
   scheduleIncrementalRefresh,
+  reconcileNow,
   loadHealth,
   loadTheaters,
   connectWS,

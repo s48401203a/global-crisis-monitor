@@ -1,5 +1,6 @@
 /** 事件管线：筛选（大类/类型/搜索/视图）→ enrich → 地图 source / 特效 / 巡览 / 事件流。 */
 import { refresh, syncTheaterLayer } from "./api/client.js";
+import { inTimeWindow } from "./api/sync.js";
 import { detectAndQueueBreaking, isLiveEvent, pumpBreakingQueue } from "./breaking.js";
 import {
   FILTERABLE_TYPES,
@@ -181,8 +182,24 @@ function applyFeatures(allRaw) {
   pumpBreakingQueue();
 }
 
+function usingFixtures() {
+  try {
+    return Boolean(
+      import.meta.env?.DEV && new URLSearchParams(location.search).get("fixtures") === "test",
+    );
+  } catch {
+    return false;
+  }
+}
+
 function applyFeaturesBody(allRaw) {
-  const all = (allRaw || []).map(normalizeEventFeature);
+  const hours = Number(selectedHours());
+  const nowMs = Date.now();
+  const all = (allRaw || []).map(normalizeEventFeature).filter((f) => {
+    if (f.properties?.status === "deleted") return false;
+    if (usingFixtures()) return true;
+    return inTimeWindow(f, hours, nowMs);
+  });
   const wantN = document.getElementById("f-natural")?.checked !== false;
   const wantC = document.getElementById("f-conflict")?.checked !== false;
   const notable = all.filter((f) => !isMinorCmaAlert(f.properties || {}));

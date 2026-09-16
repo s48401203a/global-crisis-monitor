@@ -16,6 +16,7 @@ def health():
         rows = s.execute(text("""
             SELECT source, last_success_at, last_attempt_at, last_error,
                    consecutive_failures, total_success, total_failure,
+                   last_ingest_status, last_ingest_ok, last_ingest_fail,
                    EXTRACT(EPOCH FROM (now() - last_success_at)) AS age_sec
               FROM source_health
         """)).fetchall()
@@ -45,19 +46,27 @@ def health():
     for spec in all_sources():
         r = by_src.get(spec.name)
         limit = stale_seconds(spec)
+        ingest_st = (r.last_ingest_status if r else None) or ""
         if not spec.enabled:
             status = "disabled"
         elif r is None:
             status = "pending"          # 已启用但尚未跑过（刚启动）
         else:
             stale = r.age_sec is None or r.age_sec > limit
-            # 判定规则:连续失败 3 次以上,或超过该源阈值无成功采集 → 异常
-            status = "error" if (r.consecutive_failures >= 3 or stale) else "ok"
+            # 全部入库失败立即非绿；连续失败 3 次或过期 → 异常；部分失败单独标
+            if r.consecutive_failures >= 3 or stale or ingest_st == "failed":
+                status = "error"
+            elif ingest_st == "partial":
+                status = "partial"
+            else:
+                status = "ok"
         if spec.enabled:
             enabled_total += 1
             if spec.kind in ("poll", "ws"):
                 network_total += 1
-                if status == "error" or (r is not None and (r.consecutive_failures or 0) >= 1):
+                if status == "error" or ingest_st == "failed" or (
+                    r is not None and (r.consecutive_failures or 0) >= 1
+                ):
                     failing_now += 1
         succ = r.total_success if r else 0
         fail = r.total_failure if r else 0
@@ -76,9 +85,12 @@ def health():
             "consecutive_failures": r.consecutive_failures if r else 0,
             "success_rate": round(succ / max(1, succ + fail), 3),
             "last_error": r.last_error if r else None,
+            "last_ingest_status": ingest_st or None,
+            "last_ingest_ok": int(r.last_ingest_ok) if r and r.last_ingest_ok is not None else 0,
+            "last_ingest_fail": int(r.last_ingest_fail) if r and r.last_ingest_fail is not None else 0,
             "status": status,
             "status_zh": {"ok": "正常", "error": "异常", "disabled": "已关闭",
-                          "pending": "等待首采"}[status],
+                          "pending": "等待首采", "partial": "部分失败"}[status],
         })
 
     pipeline = pipeline_status(network_total, failing_now,
